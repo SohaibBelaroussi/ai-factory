@@ -3,7 +3,8 @@ import { query } from '../../db/client.js';
 import { spawnRun, cancelRun, RefusalError } from '../../modules/commands.js';
 import { NotReadyError } from '../../modules/health.js';
 import * as github from '../../modules/github.js';
-import type { PipelineRunRow, StepRunRow, Verdict } from '../../domain/types.js';
+import { listRuns } from '../../modules/projections.js';
+import type { PipelineRunRow, StepRunRow } from '../../domain/types.js';
 
 export async function runsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
@@ -37,45 +38,9 @@ export async function runsRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get<{ Querystring: { active?: string; limit?: string } }>('/runs', async (req) => {
-    const activeOnly = req.query.active === 'true';
-    const limit = Math.min(Number(req.query.limit ?? 50), 200);
-    const runs = await query<PipelineRunRow>(
-      `select * from pipeline_runs
-       ${activeOnly ? `where status in ('running','waiting-human')` : ''}
-       order by created_at desc limit $1`,
-      [limit],
-    );
-    const out = [];
-    for (const run of runs.rows) {
-      const stepCount = run.definition_snapshot.steps.length;
-      const stepName =
-        run.definition_snapshot.steps[run.current_step_index]?.name ?? 'unknown';
-      const lastVerdict = await query<{ verdict: Verdict }>(
-        `select verdict from step_runs where pipeline_run_id = $1 and verdict is not null
-         order by ended_at desc limit 1`,
-        [run.id],
-      );
-      const pendingQ = await query<{ body: string }>(
-        `select body from questions where pipeline_run_id = $1 and status = 'open' limit 1`,
-        [run.id],
-      );
-      out.push({
-        id: run.id,
-        pipeline: run.pipeline_name,
-        issueNumber: run.issue_number,
-        branch: run.branch,
-        status: run.status,
-        currentStep: `${run.current_step_index + 1}/${stepCount}: ${stepName}`,
-        startedAt: run.created_at,
-        endedAt: run.ended_at,
-        costUsd: run.cost_usd,
-        lastVerdictSummary: lastVerdict.rows[0]?.verdict.summary ?? null,
-        pendingQuestion: pendingQ.rows[0]?.body ?? null,
-      });
-    }
-    return out;
-  });
+  app.get<{ Querystring: { active?: string; limit?: string } }>('/runs', async (req) =>
+    listRuns(req.query.active === 'true', Number(req.query.limit ?? 50)),
+  );
 
   app.get<{ Params: { id: string } }>('/runs/:id', async (req, reply) => {
     const runs = await query<PipelineRunRow>('select * from pipeline_runs where id = $1', [

@@ -80,7 +80,7 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 |---|---|---|
 | 0 | Skeleton: compose, migrations, settings + health, worker image + AUTH_OK test | **done** (real-token gate pending operator credentials) |
 | 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **built** — live gates (real run on a test repo, forced reject×2, re-clone, timeout, log streaming) pending operator credentials |
-| 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | not started |
+| 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **built** — GitHub-dependent gates pending credentials |
 | 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | not started |
 | 4 | Triggers, notifications, `/events` SSE, idempotency | not started |
 | 5 | Frontend (`web` service) | not started |
@@ -106,3 +106,13 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 - Step verdicts ride the SDK's `outputFormat: json_schema` structured output,
   with a \`\`\`verdict fence parse as fallback; the runner still checks the
   declared artifact exists on the branch.
+- **Issue dependencies**: declare blockers in the issue body with a line like
+  `Blocked-by: #1, #2`. Satisfaction is computed in code (a blocker counts as
+  satisfied when its issue is completed/closed); the Master and `POST /runs`
+  refuse to dispatch blocked issues unless `force` is set.
+- **Master chat**: `POST /chats` → `POST /chats/:id/messages {"message": "…"}`
+  streams the turn as SSE (`assistant`, `tool.use`, `done`, `error` events).
+  History (`GET /chats/:id/messages`) renders purely from the DB mirror.
+  Master sessions live under the session-store volume (`/data/sessions`) so
+  conversations survive backend restarts; built-in tools are stripped — the
+  Master acts only through the factory MCP tools.

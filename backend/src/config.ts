@@ -16,6 +16,7 @@ export const config = {
   operatorToken: process.env.OPERATOR_TOKEN ?? '',
 
   sessionStoreDir: process.env.SESSION_STORE_DIR ?? '/data/sessions',
+  masterModel: process.env.MASTER_MODEL ?? 'claude-sonnet-5',
   workerImage: process.env.WORKER_IMAGE ?? 'ai-factory-worker:latest',
   dockerNetwork: process.env.DOCKER_NETWORK ?? 'factory',
   dockerSocket: process.env.DOCKER_SOCK ?? '/var/run/docker.sock',

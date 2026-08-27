@@ -118,6 +118,60 @@ export async function listPipelineArtifacts(branch: string): Promise<string[]> {
   return entries.filter((e) => e.type === 'file').map((e) => e.name);
 }
 
+export type IssueSummary = {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  labels: string[];
+};
+
+/** All issues (open + closed), PRs filtered out. Paginates up to 300 issues. */
+export async function listIssues(): Promise<IssueSummary[]> {
+  const { repo } = await creds();
+  const out: IssueSummary[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const res = await gh(`/repos/${repo}/issues?state=all&per_page=100&page=${page}`);
+    const batch = (await res.json()) as ({
+      number: number;
+      title: string;
+      body: string | null;
+      state: string;
+      labels: ({ name?: string } | string)[];
+      pull_request?: unknown;
+    })[];
+    for (const i of batch) {
+      if (i.pull_request) continue;
+      out.push({
+        number: i.number,
+        title: i.title,
+        body: i.body ?? '',
+        state: i.state,
+        labels: i.labels.map((l) => (typeof l === 'string' ? l : (l.name ?? ''))).filter(Boolean),
+      });
+    }
+    if (batch.length < 100) break;
+  }
+  return out;
+}
+
+export async function getIssueComments(n: number, limit = 20): Promise<{ author: string; body: string }[]> {
+  const { repo } = await creds();
+  const res = await gh(`/repos/${repo}/issues/${n}/comments?per_page=${limit}`);
+  const json = (await res.json()) as { user?: { login?: string }; body?: string }[];
+  return json.map((c) => ({ author: c.user?.login ?? 'unknown', body: c.body ?? '' }));
+}
+
+export async function addIssueComment(n: number, body: string): Promise<void> {
+  const { repo } = await creds();
+  await gh(`/repos/${repo}/issues/${n}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+}
+
+export async function setIssueLabels(n: number, labels: string[]): Promise<void> {
+  const { repo } = await creds();
+  await gh(`/repos/${repo}/issues/${n}/labels`, { method: 'PUT', body: JSON.stringify({ labels }) });
+}
+
 export async function getIssue(
   n: number,
 ): Promise<{ number: number; title: string; body: string; labels: string[]; state: string } | null> {

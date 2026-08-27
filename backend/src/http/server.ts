@@ -8,6 +8,8 @@ import { settingsRoutes } from './routes/settings.js';
 import { pipelinesRoutes } from './routes/pipelines.js';
 import { runsRoutes } from './routes/runs.js';
 import { internalRoutes } from './routes/internal.js';
+import { chatsRoutes } from './routes/chats.js';
+import { boardRoutes } from './routes/board.js';
 
 /** Paths that never require the operator bearer token. */
 const PUBLIC_PREFIXES = ['/health', '/api/inngest', '/hooks/', '/internal/'];
@@ -35,6 +37,8 @@ export function buildServer(): FastifyInstance {
   app.register(pipelinesRoutes);
   app.register(runsRoutes);
   app.register(internalRoutes);
+  app.register(chatsRoutes);
+  app.register(boardRoutes);
 
   // Inngest serve endpoint: the self-hosted Inngest server syncs and invokes
   // runner functions here. Auth is the Inngest signing key, not the bearer token.
