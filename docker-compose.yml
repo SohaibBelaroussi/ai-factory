@@ -1,0 +1,81 @@
+name: ai-factory
+
+services:
+  pg:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-factory-local}
+      POSTGRES_DB: factory
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory -d factory"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [factory]
+
+  inngest:
+    image: inngest/inngest:latest
+    command:
+      [
+        "inngest", "start",
+        "--event-key", "${INNGEST_EVENT_KEY:-local-dev-event-key}",
+        "--signing-key", "${INNGEST_SIGNING_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}",
+        "--sqlite-dir", "/data",
+        "-u", "http://backend:3000/api/inngest",
+      ]
+    volumes:
+      - inngest-data:/data
+    ports:
+      - "8288:8288"
+    networks: [factory]
+
+  backend:
+    build: ./backend
+    image: ai-factory-backend:latest
+    environment:
+      DATABASE_URL: postgres://factory:${PG_PASSWORD:-factory-local}@pg:5432/factory
+      PORT: "3000"
+      INNGEST_BASE_URL: http://inngest:8288
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:-local-dev-event-key}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}
+      OPERATOR_TOKEN: ${OPERATOR_TOKEN:-}
+      SESSION_STORE_DIR: /data/sessions
+      WORKER_IMAGE: ai-factory-worker:latest
+      DOCKER_NETWORK: factory
+      # Workers reach the internal plane and Inngest by service name on the factory network.
+      INTERNAL_API_URL: http://backend:3000
+    volumes:
+      - session-store:/data/sessions
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "3000:3000"
+    depends_on:
+      pg:
+        condition: service_healthy
+      inngest:
+        condition: service_started
+    networks: [factory]
+
+  # Build-only service: `docker compose --profile tools build` produces the worker
+  # image the provisioner spawns. `docker compose --profile tools run --rm worker`
+  # runs the substrate AUTH_OK test (needs CLAUDE_CODE_OAUTH_TOKEN in env).
+  worker:
+    build: ./worker
+    image: ai-factory-worker:latest
+    profiles: ["tools"]
+    environment:
+      WORKER_MODE: auth-check
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    networks: [factory]
+
+networks:
+  factory:
+    name: factory
+
+volumes:
+  pgdata:
+  inngest-data:
+  session-store:

@@ -1,0 +1,23 @@
+{
+  "name": "ai-factory-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "5.12.1",
+    "inngest": "3.54.2",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "8.23.1",
+    "typescript": "5.9.3"
+  }
+}
