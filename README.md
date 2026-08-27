@@ -79,7 +79,7 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Skeleton: compose, migrations, settings + health, worker image + AUTH_OK test | **done** (real-token gate pending operator credentials) |
-| 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | not started |
+| 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **built** — live gates (real run on a test repo, forced reject×2, re-clone, timeout, log streaming) pending operator credentials |
 | 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | not started |
 | 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | not started |
 | 4 | Triggers, notifications, `/events` SSE, idempotency | not started |
@@ -97,3 +97,12 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 - `step_logs` inserts fire `pg_notify('step_logs', …)` for the live viewer.
 - Inngest is pinned to the **v3 LTS** SDK line; the self-hosted server syncs
   the backend's functions at `http://backend:3000/api/inngest`.
+- The runner waits on `step.finished` only in Phase 1; Phase 3 adds the race
+  with `step.waiting_human` (workers currently never emit it).
+- Worker sessions run with `permissionMode: 'dontAsk'` + the step's
+  `allowedTools` — default deny, no bypassPermissions anywhere. The agent's
+  tool env is stripped to HOME/PATH/CLAUDE_CODE_OAUTH_TOKEN (git push auth is
+  embedded in the remote URL, the internal token never enters the session).
+- Step verdicts ride the SDK's `outputFormat: json_schema` structured output,
+  with a \`\`\`verdict fence parse as fallback; the runner still checks the
+  declared artifact exists on the branch.
