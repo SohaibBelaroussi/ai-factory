@@ -182,6 +182,8 @@ export async function cancelRun(runId: string): Promise<void> {
       `update step_runs set status = 'failed', ended_at = now(), internal_token_hash = null where id = $1`,
       [s.id],
     );
+    const { deleteStepSession } = await import('./sessionStore.js');
+    await deleteStepSession(s.id);
   }
 
   await query(

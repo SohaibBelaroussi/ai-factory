@@ -15,6 +15,7 @@ import * as provisioner from './provisioner.js';
 import { getSetting } from './settings.js';
 import { notify } from './notify.js';
 import { archiveRunArtifacts } from './artifacts.js';
+import { deleteStepSession } from './sessionStore.js';
 
 /**
  * Everything the runner does to the world, as plain async functions called
@@ -269,6 +270,7 @@ export async function finalizeStep(
       [prov.stepRunId],
     );
     await provisioner.removeWorker(prov.containerId, prov.stepRunId);
+    await deleteStepSession(prov.stepRunId);
     return { kind: 'failed', reason, authFailure };
   };
 
@@ -328,6 +330,7 @@ export async function finalizeStep(
     ],
   );
   await provisioner.removeWorker(prov.containerId);
+  await deleteStepSession(prov.stepRunId);
 
   if (verdict.status === 'failed') {
     return { kind: 'failed', reason: `step "${stepDef.name}" verdict: ${verdict.summary}` };

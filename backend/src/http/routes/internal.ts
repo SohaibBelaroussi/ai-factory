@@ -3,13 +3,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { query } from '../../db/client.js';
-import { config } from '../../config.js';
 import { notify } from '../../modules/notify.js';
+import { stepSessionPath as sessionStorePath } from '../../modules/sessionStore.js';
 import type { PipelineDefinition } from '../../domain/types.js';
-
-function sessionStorePath(stepRunId: string): string {
-  return join(config.sessionStoreDir, 'steps', `${stepRunId}.json`);
-}
 
 /**
  * Internal plane — workers only. Per-step scoped token: a worker token can
