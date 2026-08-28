@@ -79,8 +79,8 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Skeleton: compose, migrations, settings + health, worker image + AUTH_OK test | **done** (real-token gate pending operator credentials) |
-| 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **built** — live gates (real run on a test repo, forced reject×2, re-clone, timeout, log streaming) pending operator credentials |
-| 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **built** — GitHub-dependent gates pending credentials |
+| 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **done** — all gates passed live 2026-08-28 (real E2E run with PR, forced reject×2 then fail, fresh re-clone, worker self-timeout + runner timeout backstop, artifact contract, streaming logs) |
+| 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **done** — all gates passed live 2026-08-28 (chat dispatch, blocked + already_running structured refusals, fresh-chat status, mirror-only history) |
 | 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | not started |
 | 4 | Triggers, notifications, `/events` SSE, idempotency | not started |
 | 5 | Frontend (`web` service) | not started |

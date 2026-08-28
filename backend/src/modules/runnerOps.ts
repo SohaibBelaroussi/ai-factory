@@ -289,21 +289,61 @@ export async function completeRun(run: RunCtx): Promise<void> {
     [run.id],
   );
   await sumRunCost(run.id);
-  const last = await query<{ verdict: Verdict }>(
-    `select verdict from step_runs where pipeline_run_id = $1 and verdict is not null
-     order by ended_at desc limit 1`,
+  const stepVerdicts = await query<{ step_index: number; attempt: number; verdict: Verdict }>(
+    `select step_index, attempt, verdict from step_runs
+     where pipeline_run_id = $1 and verdict is not null order by ended_at`,
     [run.id],
   );
-  const summary = last.rows[0]?.verdict.summary ?? 'completed';
+  const summary =
+    stepVerdicts.rows[stepVerdicts.rows.length - 1]?.verdict.summary ?? 'completed';
+
+  // The human reviews code via a PR (spec §9: needs-review = PR awaiting human).
+  // Deterministic bookkeeping, so the runner opens it — never a step agent.
+  let prUrl: string | null = null;
+  try {
+    const issueTitle =
+      run.issue_number !== null
+        ? (
+            await query<{ title: string }>('select title from issue_cache where number = $1', [
+              run.issue_number,
+            ])
+          ).rows[0]?.title
+        : null;
+    const title =
+      run.issue_number !== null
+        ? `#${run.issue_number}: ${issueTitle ?? run.brief.slice(0, 60)}`
+        : run.brief.slice(0, 72);
+    const verdictLines = stepVerdicts.rows
+      .map((r) => {
+        const name = run.definition_snapshot.steps[r.step_index]?.name ?? `step ${r.step_index}`;
+        return `- ${name} (attempt ${r.attempt}): ${r.verdict.status} — ${r.verdict.summary}`;
+      })
+      .join('\n');
+    const body = [
+      run.brief,
+      '',
+      `Pipeline \`${run.pipeline_name}\` · run \`${run.id}\``,
+      verdictLines,
+      '',
+      'Artifacts: see `pipeline/` on this branch.',
+      ...(run.issue_number !== null ? ['', `Closes #${run.issue_number}`] : []),
+    ].join('\n');
+    prUrl = await github.ensurePullRequest(run.branch, title, body);
+  } catch (err) {
+    // A run without a PR is still a completed run — surface, don't fail.
+    console.error(`PR creation failed for run ${run.id}: ${String(err)}`);
+  }
+
   if (run.issue_number !== null) {
     await query(
-      `update issue_cache set board_status = 'needs-review', active_run_id = null where number = $1`,
-      [run.issue_number],
+      `update issue_cache set board_status = 'needs-review', active_run_id = null,
+         linked_pr = coalesce($2, linked_pr) where number = $1`,
+      [run.issue_number, prUrl],
     );
   }
   await notify({
     event: 'run-completed',
     pipelineRunId: run.id,
-    summary: `${run.pipeline_name}${run.issue_number !== null ? ` #${run.issue_number}` : ''} completed: ${summary}`.slice(0, 500),
+    summary: `${run.pipeline_name}${run.issue_number !== null ? ` #${run.issue_number}` : ''} completed: ${summary}${prUrl ? ` · PR: ${prUrl}` : ''}`.slice(0, 500),
   });
 }

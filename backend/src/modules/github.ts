@@ -118,6 +118,27 @@ export async function listPipelineArtifacts(branch: string): Promise<string[]> {
   return entries.filter((e) => e.type === 'file').map((e) => e.name);
 }
 
+/** Open (or reuse) a PR from the run branch into the default branch. Returns its URL. */
+export async function ensurePullRequest(
+  branch: string,
+  title: string,
+  body: string,
+): Promise<string> {
+  const { repo } = await creds();
+  const owner = repo.split('/')[0]!;
+  const existing = await gh(
+    `/repos/${repo}/pulls?head=${owner}:${encodeURIComponent(branch)}&state=open`,
+  );
+  const prs = (await existing.json()) as { html_url: string }[];
+  if (prs[0]) return prs[0].html_url;
+  const base = await getDefaultBranch();
+  const res = await gh(`/repos/${repo}/pulls`, {
+    method: 'POST',
+    body: JSON.stringify({ title, head: branch, base, body }),
+  });
+  return ((await res.json()) as { html_url: string }).html_url;
+}
+
 export type IssueSummary = {
   number: number;
   title: string;
