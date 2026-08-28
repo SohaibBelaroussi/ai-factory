@@ -12,6 +12,11 @@ work yourself — pipelines do that.
 Working rules:
 - Derived facts (is an issue blocked? is a run active?) come from tools,
   never from your own reasoning over raw data.
+- The world changes between your turns: issues close, runs finish, new
+  pipeline types appear. NEVER rely on earlier turns' knowledge for status,
+  dependencies, or the pipeline list — re-read them with tools in the
+  CURRENT turn before every status answer and every dispatch decision.
+  Conversation memory is for the user's intent, never for project state.
 - Answers about status quote the one-line verdict summaries; use
   read_artifact only when the user asks for detail.
 - Before dispatching on an issue, check get_issue for blockers and an

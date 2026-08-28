@@ -126,6 +126,31 @@ export async function spawnRun(args: {
   return { runId, existing: false };
 }
 
+/**
+ * Single entry point for answers — the API route, the Master's
+ * answer_question tool, and any future channel all call this.
+ */
+export async function answerQuestion(questionId: string, answer: string): Promise<void> {
+  if (!answer?.trim()) throw new RefusalError({ reason: 'empty_answer' });
+  const res = await query<{ id: string; pipeline_run_id: string; step_run_id: string }>(
+    `update questions set answer = $2, status = 'answered', answered_at = now()
+     where id = $1 and status = 'open'
+     returning id, pipeline_run_id, step_run_id`,
+    [questionId, answer.trim()],
+  );
+  const q = res.rows[0];
+  if (!q) throw new RefusalError({ reason: 'unknown_or_already_answered_question', questionId });
+  await inngest.send({
+    name: EVT.questionAnswered,
+    data: {
+      questionId,
+      answer: answer.trim(),
+      stepRunId: q.step_run_id,
+      runId: q.pipeline_run_id,
+    },
+  });
+}
+
 export async function cancelRun(runId: string): Promise<void> {
   const res = await query<PipelineRunRow>('select * from pipeline_runs where id = $1', [runId]);
   const run = res.rows[0];
@@ -152,6 +177,12 @@ export async function cancelRun(runId: string): Promise<void> {
 
   await query(
     `update pipeline_runs set status = 'cancelled', ended_at = now() where id = $1`,
+    [runId],
+  );
+  // A cancelled run's open questions must not linger in the pending list.
+  await query(
+    `update questions set status = 'answered', answer = '(run cancelled)', answered_at = now()
+     where pipeline_run_id = $1 and status = 'open'`,
     [runId],
   );
   if (run.issue_number !== null) {

@@ -81,7 +81,7 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 | 0 | Skeleton: compose, migrations, settings + health, worker image + AUTH_OK test | **done** (real-token gate pending operator credentials) |
 | 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **done** — all gates passed live 2026-08-28 (real E2E run with PR, forced reject×2 then fail, fresh re-clone, worker self-timeout + runner timeout backstop, artifact contract, streaming logs) |
 | 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **done** — all gates passed live 2026-08-28 (chat dispatch, blocked + already_running structured refusals, fresh-chat status, mirror-only history) |
-| 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | not started |
+| 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | **done** — all gates passed live 2026-08-28 (suspend with zero containers, resume same session id from both answer doors, agent references the answer, cap exceeded → tool error → step proceeds) |
 | 4 | Triggers, notifications, `/events` SSE, idempotency | not started |
 | 5 | Frontend (`web` service) | not started |
 
@@ -110,6 +110,16 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
   `Blocked-by: #1, #2`. Satisfaction is computed in code (a blocker counts as
   satisfied when its issue is completed/closed); the Master and `POST /runs`
   refuse to dispatch blocked issues unless `force` is set.
+- **ask_human / suspend-resume**: the worker emits ONE `step.finished` event
+  per exit; the catalog's `step.waiting_human` signal rides in it as
+  `outcome: "waiting_human"` (one event name keeps the runner's durable waits
+  strictly linear and replay-deterministic). Session JSONL travels through the
+  internal API to the backend-owned session store — workers never mount
+  volumes, preserving the run-workers-elsewhere seam. Answers come through one
+  command (`POST /questions/:id/answer` ≡ the Master's `answer_question`).
+- **Artifact hygiene**: merged PRs carry `pipeline/` artifacts into the
+  default branch, so `prepareRun` clears inherited artifacts at run start —
+  a stale file must never satisfy a new run's output contract.
 - **Master chat**: `POST /chats` → `POST /chats/:id/messages {"message": "…"}`
   streams the turn as SSE (`assistant`, `tool.use`, `done`, `error` events).
   History (`GET /chats/:id/messages`) renders purely from the DB mirror.

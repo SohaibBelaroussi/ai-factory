@@ -26,9 +26,22 @@ export async function loadRun(runId: string): Promise<PipelineRunRow | null> {
   return res.rows[0] ?? null;
 }
 
-/** Create the run branch (or reuse it) and write pipeline/brief.md. */
+/**
+ * Create the run branch (or reuse it) and write pipeline/brief.md. Stale
+ * pipeline/ artifacts inherited from earlier runs (merged PRs carry them into
+ * the default branch) are cleared first — a run's artifact set is its own,
+ * and an inherited file must never satisfy this run's output contract.
+ */
 export async function prepareRun(run: RunCtx): Promise<void> {
   await github.ensureBranch(run.branch);
+  try {
+    const stale = await github.listPipelineArtifacts(run.branch);
+    for (const name of stale) {
+      await github.deleteFile(run.branch, `pipeline/${name}`, `pipeline: clear stale artifact for run ${run.id}`);
+    }
+  } catch {
+    // best-effort; a missing pipeline/ dir is the common case
+  }
   await github.putFile(
     run.branch,
     'pipeline/brief.md',
@@ -149,6 +162,85 @@ export async function provisionStep(
     run.id,
     stepDef.index,
   ]);
+  return { stepRunId, containerId };
+}
+
+/** After the worker suspends itself on ask_human: only the corpse needs removing. */
+export async function suspendStepCleanup(prov: Provisioned): Promise<void> {
+  await query('update step_runs set internal_token_hash = null where id = $1', [prov.stepRunId]);
+  await provisioner.removeWorker(prov.containerId);
+}
+
+/**
+ * Resume a suspended step: fresh worker, new scoped token, same step_run row,
+ * same session id — the answer arrives as the next user message.
+ */
+export async function resumeStep(
+  run: RunCtx,
+  stepDef: StepDefinition,
+  stepRunId: string,
+  answer: string,
+  resumeCount: number,
+): Promise<Provisioned> {
+  const row = await query<{ harness_session_id: string | null; attempt: number }>(
+    'select harness_session_id, attempt from step_runs where id = $1',
+    [stepRunId],
+  );
+  const sessionId = row.rows[0]?.harness_session_id;
+  if (!sessionId) throw new Error(`step ${stepRunId} has no session id to resume`);
+
+  const token = randomBytes(24).toString('hex');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  await query(
+    `update step_runs set status = 'running', internal_token_hash = $2,
+       internal_token_expires_at = now() + ($3 || ' minutes')::interval
+     where id = $1`,
+    [stepRunId, tokenHash, String(stepDef.timeoutMinutes + 15)],
+  );
+  await query(`update pipeline_runs set status = 'running' where id = $1 and status = 'waiting-human'`, [
+    run.id,
+  ]);
+
+  const [claudeToken, gitToken, repo] = await Promise.all([
+    getSetting('claude-oauth-token'),
+    getSetting('github-token'),
+    github.getRepoFullName(),
+  ]);
+  if (!claudeToken || !gitToken) throw new Error('claude-oauth-token / github-token not set');
+
+  const stepContext = {
+    stepRunId,
+    runId: run.id,
+    branch: run.branch,
+    repo,
+    stepName: stepDef.name,
+    stepIndex: stepDef.index,
+    attempt: row.rows[0]!.attempt,
+    harnessPrompt: HARNESS_PROMPT,
+    behaviorPrompt: stepDef.behaviorPrompt,
+    runtimeContext: '',
+    allowedTools: stepDef.allowedTools,
+    model: stepDef.model,
+    outputArtifact: stepDef.outputArtifact,
+    timeoutMinutes: stepDef.timeoutMinutes,
+    askHumanCap: stepDef.askHumanCap,
+    resumeSessionId: sessionId,
+    resumePrompt: `The human answered your question: "${answer}"\nContinue the step from where you paused. Finish by writing your declared output artifact (if any) and your verdict.`,
+  };
+
+  const containerId = await provisioner.startWorker({
+    name: `factory-step-${stepRunId}-r${resumeCount}`,
+    env: {
+      WORKER_MODE: 'step',
+      STEP_CONTEXT: JSON.stringify(stepContext),
+      CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
+      GIT_TOKEN: gitToken,
+      INTERNAL_API_URL: config.internalApiUrl,
+      INTERNAL_TOKEN: token,
+      INNGEST_EVENT_URL: `${config.inngestBaseUrl}/e/${config.inngestEventKey}`,
+    },
+  });
+  await query('update step_runs set container_id = $2 where id = $1', [stepRunId, containerId]);
   return { stepRunId, containerId };
 }
 

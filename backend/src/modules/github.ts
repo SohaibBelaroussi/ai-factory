@@ -84,6 +84,16 @@ export async function putFile(
   });
 }
 
+export async function deleteFile(branch: string, path: string, message: string): Promise<void> {
+  const { repo } = await creds();
+  const apiPath = `/repos/${repo}/contents/${path}`;
+  const existing = await gh(`${apiPath}?ref=${encodeURIComponent(branch)}`, { allow404: true });
+  if (existing.status === 404) return;
+  const sha = ((await existing.json()) as { sha?: string }).sha;
+  if (!sha) return;
+  await gh(apiPath, { method: 'DELETE', body: JSON.stringify({ message, branch, sha }) });
+}
+
 export async function fileExists(branch: string, path: string): Promise<boolean> {
   const { repo } = await creds();
   const res = await gh(

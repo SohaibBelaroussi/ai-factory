@@ -48,16 +48,42 @@ const runPipeline = inngest.createFunction(
       attempts[i] = (attempts[i] ?? 0) + 1;
       const a = attempts[i]!;
 
-      const prov = await step.run(`provision-s${i}-a${a}`, () =>
+      let prov = await step.run(`provision-s${i}-a${a}`, () =>
         ops.provisionStep(run, sd, a, feedback),
       );
 
-      // Phase 3 adds a race with step.waiting_human here.
-      const evt = await step.waitForEvent(`wait-s${i}-a${a}`, {
+      let evt = await step.waitForEvent(`wait-s${i}-a${a}`, {
         event: EVT.stepFinished,
         timeout: `${sd.timeoutMinutes + 3}m`,
         if: `async.data.stepRunId == "${prov.stepRunId}"`,
       });
+
+      // ask_human: the worker suspended itself. Nothing runs and nothing
+      // costs money until the answer; then a fresh worker resumes the same
+      // session. Multi-turn approve/iterate loops are repeated cycles here.
+      let r = 0;
+      while (evt && (evt.data as StepFinishedData).outcome === 'waiting_human') {
+        r += 1;
+        await step.run(`suspend-s${i}-a${a}-r${r}`, () => ops.suspendStepCleanup(prov));
+        const questionId = (evt.data as StepFinishedData & { questionId?: string }).questionId;
+        const ans = await step.waitForEvent(`answer-s${i}-a${a}-r${r}`, {
+          event: EVT.questionAnswered,
+          timeout: '30d',
+          if: `async.data.questionId == "${questionId}"`,
+        });
+        if (ans === null) {
+          evt = null; // unanswered for 30 days → treated like a timeout below
+          break;
+        }
+        prov = await step.run(`resume-s${i}-a${a}-r${r}`, () =>
+          ops.resumeStep(run, sd, prov.stepRunId, (ans.data as { answer: string }).answer, r),
+        );
+        evt = await step.waitForEvent(`wait-s${i}-a${a}-r${r}`, {
+          event: EVT.stepFinished,
+          timeout: `${sd.timeoutMinutes + 3}m`,
+          if: `async.data.stepRunId == "${prov.stepRunId}"`,
+        });
+      }
 
       const outcome = await step.run(`finalize-s${i}-a${a}`, () =>
         ops.finalizeStep(run, sd, prov, evt ? (evt.data as StepFinishedData) : null, a),

@@ -57,6 +57,28 @@ export class InternalApi {
     );
   }
 
+  /** Suspend: hand the session JSONL to the session store (backend-owned). */
+  async uploadSession(sessionId: string, jsonl: string): Promise<boolean> {
+    return post(
+      `${this.ctx.internalUrl}/internal/steps/${this.ctx.stepRunId}/session`,
+      { sessionId, jsonl },
+      { authorization: `Bearer ${this.ctx.internalToken}` },
+    );
+  }
+
+  /** Resume: fetch the suspended session JSONL back. */
+  async downloadSession(): Promise<{ sessionId: string; jsonl: string } | null> {
+    try {
+      const res = await fetch(`${this.ctx.internalUrl}/internal/steps/${this.ctx.stepRunId}/session`, {
+        headers: { authorization: `Bearer ${this.ctx.internalToken}` },
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { sessionId: string; jsonl: string };
+    } catch {
+      return null;
+    }
+  }
+
   /** Emit the step's ONE event to Inngest. Retries; this must not be lost. */
   async emitEvent(name: string, data: Record<string, unknown>): Promise<void> {
     for (let i = 0; i < 4; i++) {

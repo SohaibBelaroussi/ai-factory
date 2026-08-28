@@ -168,9 +168,21 @@ nits; status "reject" if anything must change before merge — put the
 must-fix items in the one-line summary (it is fed back to the implementer)
 and set detailsArtifact to "review.md".`;
 
+const GATED_PLAN_IMPLEMENT_PROMPT = `${PLAN_IMPLEMENT_PROMPT}
+
+GATE — plan approval required: after writing pipeline/plan.md and BEFORE
+implementing anything, you MUST call ask_human with a concise summary of the
+plan and ask for approval. Only implement after the human approves. If they
+request changes, revise pipeline/plan.md and ask again (respect your question
+budget). If they reject the work outright, finish with verdict status
+"failed" and their reason as the summary.`;
+
 export async function seedPipelines(): Promise<void> {
-  const existing = await getPipeline('implement');
-  if (existing) return;
+  if (!(await getPipeline('implement'))) await seedImplement();
+  if (!(await getPipeline('implement-gated'))) await seedImplementGated();
+}
+
+async function seedImplement(): Promise<void> {
   await createPipeline({
     name: 'implement',
     description:
@@ -200,4 +212,37 @@ export async function seedPipelines(): Promise<void> {
     ],
   });
   console.log('Seeded pipeline: implement');
+}
+
+/** Same machinery as `implement`, one tool grant apart (spec §6.3). */
+async function seedImplementGated(): Promise<void> {
+  await createPipeline({
+    name: 'implement-gated',
+    description:
+      'Implement a GitHub issue or task brief with a human gate: plans first, PAUSES for plan approval via ask_human (answer from the board or chat), then implements and commits, with an independent review step gating the result. Use when the user wants to approve the plan before any code is written.',
+    inputSchema: { issueNumber: 'optional', brief: 'required' },
+    steps: [
+      {
+        name: 'plan-implement',
+        behaviorPrompt: GATED_PLAN_IMPLEMENT_PROMPT,
+        model: 'claude-sonnet-5',
+        allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ask_human'],
+        outputArtifact: 'plan.md',
+        askHumanCap: 3,
+        retryWithFeedback: 2,
+        timeoutMinutes: 45,
+      },
+      {
+        name: 'review',
+        behaviorPrompt: REVIEW_PROMPT,
+        model: 'claude-sonnet-5',
+        allowedTools: ['Bash', 'Read', 'Glob', 'Grep', 'Write'],
+        outputArtifact: 'review.md',
+        askHumanCap: 0,
+        retryWithFeedback: 0,
+        timeoutMinutes: 20,
+      },
+    ],
+  });
+  console.log('Seeded pipeline: implement-gated');
 }

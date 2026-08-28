@@ -2,7 +2,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { query } from '../db/client.js';
 import { listPipelines } from '../modules/pipelines.js';
-import { spawnRun, cancelRun, RefusalError } from '../modules/commands.js';
+import { spawnRun, cancelRun, answerQuestion, RefusalError } from '../modules/commands.js';
 import { NotReadyError } from '../modules/health.js';
 import { getBoard, getIssueDetail, listRuns, listOpenQuestions } from '../modules/projections.js';
 import { syncIssuesIfStale } from '../modules/issueSync.js';
@@ -159,8 +159,23 @@ const updateIssueTool = tool(
   },
 );
 
-// answer_question joins in Phase 3 alongside the suspend/resume machinery.
+const answerQuestionTool = tool(
+  'answer_question',
+  'Submit the human\'s answer to an open ask_human question (find them with list_pending_questions). This resumes the suspended pipeline step. Only submit what the user actually said — never invent an answer.',
+  { questionId: z.string(), answer: z.string() },
+  async ({ questionId, answer }) => {
+    try {
+      await answerQuestion(questionId, answer);
+      return json({ answered: true, questionId });
+    } catch (err) {
+      if (err instanceof RefusalError) return json({ answered: false, refusal: err.refusal });
+      throw err;
+    }
+  },
+);
+
 const factoryTools = [
+  answerQuestionTool,
   listPipelineTypes,
   getBoardTool,
   getIssueTool,

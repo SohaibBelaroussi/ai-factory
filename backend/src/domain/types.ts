@@ -109,11 +109,18 @@ export const EVT = {
   runCancelled: 'pipeline.run.cancelled',
 } as const;
 
-/** Payload of step.finished, emitted by workers directly to Inngest. */
+/**
+ * Payload of step.finished, emitted by workers directly to Inngest — exactly
+ * one per worker exit. The catalog's step.waiting_human signal rides in here
+ * as outcome 'waiting_human' (one event name keeps the runner's waits strictly
+ * linear and replay-deterministic; documented deviation from the two-name
+ * catalog).
+ */
 export type StepFinishedData = {
   runId: string;
   stepRunId: string;
-  outcome: 'done' | 'failed' | 'cancelled';
+  outcome: 'done' | 'failed' | 'cancelled' | 'waiting_human';
+  questionId?: string;
   verdict?: unknown;
   commitShas?: string[];
   sessionId?: string;
