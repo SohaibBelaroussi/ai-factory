@@ -1,7 +1,8 @@
 # AI Factory — Implementation Record
 
-Status as of 2026-08-28: **Phases 0–4 complete, gated live, and hardened. The
-backend E2E milestone is passed. Phase 5 (frontend) is the only phase left.**
+Status as of 2026-08-28: **All phases (0–5) complete and gated live. The
+backend is hardened; the frontend (Phase 5) shipped and passed the spec's
+done-when gate.**
 This document is the authoritative record of what exists and how it works —
 written for a fresh context to continue the build without archaeology. The
 product spec lives in [`spec files/`](../spec%20files/); this file records how
@@ -20,6 +21,7 @@ it was realized and where reality deviated (deliberately) from it.
 | `inngest` | inngest/inngest (self-hosted, `inngest start`) | Durable runner engine. SQLite on volume `inngest-data`. Dashboard :8288. **Signing key must be BARE hex** (rejects `signkey-` prefix); event key any string; compose has working local defaults, override via `.env`. |
 | `backend` | built from `backend/` | Public + internal API planes, Inngest runner functions, Master service, provisioner. Port :3000. Mounts `/var/run/docker.sock` (provisioner) and volume `session-store` at `/data/sessions`. |
 | `worker` | built from `worker/`, tag `ai-factory-worker:latest` | **Build-only compose profile `tools`** — not a running service. The provisioner spawns instances per step; `docker compose --profile tools run --rm worker` runs the AUTH_OK substrate test. |
+| `web` | built from `web/` (Vite static build → nginx:alpine) | The frontend. Port :8080. nginx serves the SPA and proxies `/api/*` → `backend:3000` (prefix stripped, `proxy_buffering off` for SSE) — one origin, no CORS. Talks ONLY to the public API. |
 
 Backend and worker are TypeScript/Node 22, tsc-compiled, multi-stage
 Dockerfiles. Key pinned deps: `inngest 3.54.2` (v3 LTS — do NOT bump to v4),
@@ -75,6 +77,19 @@ worker/
     gitOps.ts            clone into /work, safety-net commit+push, rev-list commit attribution
     internalApi.ts       batched log streaming, cost, session upload/download, ONE-event emit w/ retries
     cli.ts               native claude binary resolution (env override → sibling pkg → fixed paths)
+web/
+  Dockerfile · nginx.conf  static build + /api reverse proxy (SSE-safe)
+  vite.config.ts           dev proxy /api → localhost:3000 (same prefix contract as nginx)
+  src/
+    lib/api.ts             typed client for the whole public surface; operator bearer token
+                           from localStorage; Refusal (409) thrown as data
+    lib/sse.ts             SSE-over-fetch (chat turns are SSE on POST; EventSource can't
+                           send auth headers) + persistentSse (backoff reconnect)
+    lib/events.tsx         /events bus → TanStack Query invalidation (ids only → re-fetch)
+    lib/types.ts           wire-faithful API types (camelCase projections AND snake_case rows)
+    components/            ui primitives · DispatchDialog · QuestionCard · LogViewer · NotificationBell
+    pages/                 Board · Runs · RunDetail · IssueDetail · Chat · Pipelines ·
+                           PipelineEditor · Questions · Settings
 scripts/                 worker-auth-test.ps1 / .sh
 docker-compose.yml · .env.example · README.md (phase table, runbooks, design notes)
 ```
@@ -321,6 +336,16 @@ positional).
 - Totals: 15 completed runs, $3.96 notional (subscription — cost figures are
   accounting signals, not invoices), 12 issues shipped+merged, zero dangling
   containers/questions/runs across every manufactured failure.
+- Phase 5 gates (2026-08-28, all through the PRODUCTION web container :8080):
+  every screen renders live campaign data; Master chat streamed a real turn
+  (tool chips + answer); a `quick-docs` pipeline was created ENTIRELY in the
+  UI form, the Master discovered it via `list_pipeline_types` by description
+  alone ("quick-docs is the right fit") and dispatched it; the run completed
+  E2E ($0.14, SECURITY.md, PR #29); issue #20 was dispatched from the board
+  card and its card moved backlog → in-progress → needs-review on a parked
+  page with NO reload (pure /events → query invalidation); the live log
+  viewer streamed the agent's session through nginx in real time. Every UI
+  action is a plain public-API call — curl-reproducible by construction.
 
 ## 12. User decisions log
 
@@ -351,18 +376,43 @@ positional).
 8. GitHub returns 404 (not 403) for unauthorized writes; classic PAT needs
    `repo` scope; merged PRs previously dragged pipeline/ into main (fixed by
    archive-then-clear).
+9. Step agents can read the PAT out of the git remote URL (clone embeds it)
+   and call the GitHub API with it — observed live when a pipeline
+   description said "open a PR" and the agent did so via curl (completeRun's
+   ensurePullRequest adopted it idempotently; bookkeeping held). Keep
+   PR-opening language out of pipeline prompts/descriptions, and prefer a
+   fine-grained PAT scoped to the one target repo on the VM. Related: the
+   Master skipped list_pipeline_types on a dispatch turn once; its prompt now
+   REQUIRES calling it in the same turn as any spawn_pipeline.
 
-## 14. What Phase 5 must build (the only remaining phase)
+## 14. Phase 5 — the frontend (built; done-when passed)
 
-Separate `web` service (container, static build) talking ONLY to the public
-API. Screens: Master chat (SSE turn stream + mirror history) · board (live
-over /events) · run detail + live log viewer (/runs/:id/logs/stream) ·
-pipeline builder (steps, behavior prompts, tool checkboxes incl. ask_human,
-output artifact, retry/caps — POST/PUT /pipelines) · notification center +
-pending questions (answer box → POST /questions/:id/answer) · settings/health.
-Done-when (spec): a pipeline created entirely in the UI is discovered by the
-Master via its description and runs end-to-end; the board reflects a run live
-over /events; **every UI action is reproducible with curl** (the UI test).
-Deployment checklist for the real VM: set OPERATOR_TOKEN, real Inngest keys,
+Separate `web` service (Vite + React + TS SPA, static build, nginx) talking
+ONLY to the public API through the `/api` prefix — no bespoke
+backend-for-frontend endpoints exist, which keeps "every UI action is
+reproducible with curl" true by construction. Data layer: TanStack Query;
+freshness is event-driven, not polled — /events sends ids, the bus maps each
+event type to query-key invalidations. All streams (events bus, log tail,
+chat turns) go through one SSE-over-fetch helper because the chat turn stream
+is SSE on a POST and EventSource cannot send the operator bearer header.
+
+Screens (all verified live, see §11): Board (status columns, per-card
+dispatch, live movement) · Runs (table + active filter) · Run detail (steps,
+attempts, verdicts, artifacts modal, commit SHAs, cancel, pending-question
+answer box, live log viewer with step/attempt boundaries and scroll pinning) ·
+Issue detail (deps, comments, past runs) · Master chat (mirror history, tool
+chips, streamed turns) · Pipelines list + builder (create/edit steps, tool
+checkboxes incl. ask_human with cap coupling, reorder; server 422s surface
+verbatim) · Questions + notifications (answer + read state) · Settings/health
+(masked settings PUT, health checks, operator token stored browser-side).
+
+Dev loop: `npm run dev` in `web/` (Vite proxies /api → localhost:3000);
+`.claude/launch.json` has the `web` config. Prod: `docker compose up -d
+--build web` → http://localhost:8080.
+
+Deployment checklist for the real VM (config, not code): set OPERATOR_TOKEN
+(the UI sends it as a bearer from its Settings screen), real Inngest keys,
 volume backups (pgdata, session-store), GitHub webhook → /hooks for instant
-issue sync, `claude setup-token` on the VM.
+issue sync, `claude setup-token` on the VM, and prefer a fine-grained PAT
+scoped to the target repo (gotcha 9). Expose only the `web` port publicly if
+possible — the UI needs nothing else.

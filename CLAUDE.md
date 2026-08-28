@@ -3,9 +3,8 @@
 Read these before changing anything:
 
 1. **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** — authoritative record
-   of everything built (phases 0–4 complete + hardened), how it works, API
-   surface, deviations, gotchas, and what Phase 5 (frontend — the only
-   remaining phase) must build.
+   of everything built (all phases 0–5 complete, gated live, hardened), how it
+   works, the API surface, deviations, and gotchas.
 2. **[spec files/](spec%20files/)** — the product spec and locked architecture.
    Build exactly that system; IMPLEMENTATION.md records where and why reality
    deviates.
@@ -18,7 +17,8 @@ waiting-human = zero processes, zero spend; the Master only acts through its
 factory tools; one code path per action (API route = Master tool = webhook).
 
 Operational facts: stack runs via `docker compose up -d --build` (+ `--profile
-tools` for the worker image); backend :3000, Inngest dashboard :8288; secrets
+tools` for the worker image); web UI :8080, backend :3000, Inngest dashboard
+:8288; web dev loop is `npm run dev` in `web/` (Vite proxies /api); secrets
 live in the settings table (PUT /settings/...), never in files; inngest SDK
 stays on v3 LTS; the Agent SDK version is pinned exact in both package.jsons.
 Commit at every milestone (Co-Authored-By trailer), push to origin main.

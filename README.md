@@ -5,16 +5,17 @@ agent dispatches **pipelines** — user-defined sequences of steps, each a full
 agentic Claude Agent SDK session in an ephemeral Docker worker. Spec and locked
 architecture live in [`spec files/`](spec%20files/) — build exactly that system.
 
-**Backend first.** Every action is an API call; the operator uses curl until the
-frontend phase.
+Every action is an API call; the web UI at :8080 renders exactly the public
+API, so anything done in the UI is reproducible with curl.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | `pg` + `inngest` (self-hosted) + `backend` on the `factory` network; `worker` build-only profile |
+| `docker-compose.yml` | `pg` + `inngest` (self-hosted) + `backend` + `web` on the `factory` network; `worker` build-only profile |
 | `backend/` | API (public + internal planes), migrations, Inngest runner functions, Master service, provisioner |
 | `worker/` | Ephemeral step-worker image (Claude Agent SDK + pinned CLI, canonical cwd `/work`) |
+| `web/` | Frontend SPA (Vite/React, nginx serving + `/api` proxy) — port :8080 |
 | `scripts/` | Operator scripts (worker AUTH_OK test) |
 
 ## Quickstart
@@ -83,7 +84,7 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 | 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **done** — all gates passed live 2026-08-28 (chat dispatch, blocked + already_running structured refusals, fresh-chat status, mirror-only history) |
 | 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | **done** — all gates passed live 2026-08-28 (suspend with zero containers, resume same session id from both answer doors, agent references the answer, cap exceeded → tool error → step proceeds) |
 | 4 | Triggers, notifications, `/events` SSE, idempotency | **done** — all gates passed live 2026-08-28 (signed webhook spawns scoped run, bad secret 401, replayed delivery never double-spawns, cron fired exactly once per bucket, one notification per completion, all four event types + live log tail on SSE) |
-| 5 | Frontend (`web` service) | not started |
+| 5 | Frontend (`web` service) | complete — done-when gate passed live |
 
 **→ Backend E2E milestone reached**: the full operator story (spec §13) is
 executable end-to-end with curl only — settings, health, pipeline CRUD, chat

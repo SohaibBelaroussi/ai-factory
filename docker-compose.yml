@@ -59,6 +59,16 @@ services:
         condition: service_started
     networks: [factory]
 
+  web:
+    build: ./web
+    image: ai-factory-web:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [factory]
+
   # Build-only service: `docker compose --profile tools build` produces the worker
   # image the provisioner spawns. `docker compose --profile tools run --rm worker`
   # runs the substrate AUTH_OK test (needs CLAUDE_CODE_OAUTH_TOKEN in env).
