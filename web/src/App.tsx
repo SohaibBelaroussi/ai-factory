@@ -4,6 +4,7 @@ import BoardPage from './pages/BoardPage';
 import RunsPage from './pages/RunsPage';
 import RunDetailPage from './pages/RunDetailPage';
 import ChatPage from './pages/ChatPage';
+import IssueDetailPage from './pages/IssueDetailPage';
 import PipelinesPage from './pages/PipelinesPage';
 import PipelineEditorPage from './pages/PipelineEditorPage';
 import QuestionsPage from './pages/QuestionsPage';
@@ -69,6 +70,7 @@ export default function App(): React.ReactNode {
           <Route path="/board" element={<BoardPage />} />
           <Route path="/runs" element={<RunsPage />} />
           <Route path="/runs/:id" element={<RunDetailPage />} />
+          <Route path="/issues/:n" element={<IssueDetailPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/chat/:id" element={<ChatPage />} />
           <Route path="/pipelines" element={<PipelinesPage />} />
