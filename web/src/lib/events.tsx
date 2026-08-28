@@ -39,6 +39,7 @@ export function EventBusProvider({ children }: { children: ReactNode }): ReactNo
           case 'question.created':
             invalidate(['questions']);
             invalidate(['runs']);
+            invalidate(['run']); // any open run-detail view shows the new question
             break;
           case 'notification.created':
             invalidate(['notifications']);
