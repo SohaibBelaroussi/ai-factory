@@ -139,4 +139,14 @@ const ping = inngest.createFunction(
   async () => ({ ok: true }),
 );
 
-export const functions = [runPipeline, ping];
+/** Once-a-minute tick that fires due cron schedules (idempotent per minute bucket). */
+const cronTick = inngest.createFunction(
+  { id: 'factory-cron-tick', retries: 0 },
+  { cron: '* * * * *' },
+  async () => {
+    const { fireDueSchedules } = await import('../modules/triggers.js');
+    return fireDueSchedules(new Date());
+  },
+);
+
+export const functions = [runPipeline, ping, cronTick];

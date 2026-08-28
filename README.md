@@ -82,8 +82,14 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 | 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **done** — all gates passed live 2026-08-28 (real E2E run with PR, forced reject×2 then fail, fresh re-clone, worker self-timeout + runner timeout backstop, artifact contract, streaming logs) |
 | 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **done** — all gates passed live 2026-08-28 (chat dispatch, blocked + already_running structured refusals, fresh-chat status, mirror-only history) |
 | 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | **done** — all gates passed live 2026-08-28 (suspend with zero containers, resume same session id from both answer doors, agent references the answer, cap exceeded → tool error → step proceeds) |
-| 4 | Triggers, notifications, `/events` SSE, idempotency | not started |
+| 4 | Triggers, notifications, `/events` SSE, idempotency | **done** — all gates passed live 2026-08-28 (signed webhook spawns scoped run, bad secret 401, replayed delivery never double-spawns, cron fired exactly once per bucket, one notification per completion, all four event types + live log tail on SSE) |
 | 5 | Frontend (`web` service) | not started |
+
+**→ Backend E2E milestone reached**: the full operator story (spec §13) is
+executable end-to-end with curl only — settings, health, pipeline CRUD, chat
+dispatch, gated runs with suspend/resume answers, cancels, artifacts,
+notifications, webhooks, schedules, and live events all ran over the API in
+this validation round.
 
 ## Design notes (implementation choices within the spec)
 
@@ -120,6 +126,18 @@ public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
 - **Artifact hygiene**: merged PRs carry `pipeline/` artifacts into the
   default branch, so `prepareRun` clears inherited artifacts at run start —
   a stale file must never satisfy a new run's output contract.
+- **Triggers**: `POST /triggers {name, pipeline, mapping, schedule?}` returns
+  the HMAC secret exactly once. Webhooks: `POST /hooks/:id` signed
+  GitHub-style (`X-Hub-Signature-256: sha256=<hmac of raw body>`), delivery id
+  from `X-GitHub-Delivery` (falls back to a body hash); mapping pulls
+  `issueNumberPath` / `briefTemplate` (`{dot.path}` placeholders) /
+  `filterPath+filterEquals` from the payload — only mapped fields ever enter a
+  prompt. Schedules: cron expressions evaluated by a once-a-minute Inngest
+  tick; the minute bucket is the idempotency key.
+- **/events**: one SSE stream (`run.updated`, `question.created`,
+  `notification.created`, `board.updated`) backed by Postgres LISTEN/NOTIFY;
+  events carry ids, clients re-fetch. `GET /runs/:id/logs/stream` tails
+  step_logs live the same way.
 - **Master chat**: `POST /chats` → `POST /chats/:id/messages {"message": "…"}`
   streams the turn as SSE (`assistant`, `tool.use`, `done`, `error` events).
   History (`GET /chats/:id/messages`) renders purely from the DB mirror.
