@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/*
+ * Dark ops-console theme. Single deliberate look (no light variant) —
+ * the factory floor is a control room.
+ */
+@theme {
+  --color-bg: #0b0e14;
+  --color-panel: #11151d;
+  --color-panel-2: #171d28;
+  --color-border: #222a37;
+  --color-ink: #d7dde8;
+  --color-dim: #8b94a7;
+  --color-faint: #5b6474;
+  --color-accent: #4f9cf9;
+  --color-accent-dim: #2c5d9e;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3342;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #38445a;
+}
