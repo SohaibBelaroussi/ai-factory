@@ -17,8 +17,10 @@ export async function hooksRoutes(app: FastifyInstance): Promise<void> {
     (req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
     try {
       done(null, JSON.parse((body as Buffer).toString('utf8')));
-    } catch (err) {
-      done(err as Error, undefined);
+    } catch {
+      const bad = new Error('webhook body is not valid JSON') as Error & { statusCode: number };
+      bad.statusCode = 400;
+      done(bad, undefined);
     }
   });
 

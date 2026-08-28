@@ -43,6 +43,7 @@ export async function spawnRun(args: {
   force?: boolean;
 }): Promise<{ runId: string; existing: boolean }> {
   await assertReady();
+  let issueTitle: string | null = null;
 
   const def = await getPipeline(args.pipeline);
   if (!def) throw new RefusalError({ reason: 'unknown_pipeline', pipeline: args.pipeline });
@@ -69,6 +70,20 @@ export async function spawnRun(args: {
     if (active.rows[0]) {
       throw new RefusalError({ reason: 'already_running', runId: active.rows[0].id });
     }
+    // A run on a nonexistent or closed issue is doomed work — refuse before
+    // any tokens burn. force overrides the closed check (legitimate re-work),
+    // never the existence check.
+    let issue: Awaited<ReturnType<typeof github.getIssue>> = null;
+    try {
+      issue = await github.getIssue(issueNumber);
+    } catch (err) {
+      throw new RefusalError({ reason: 'issue_lookup_failed', detail: String(err).slice(0, 200) });
+    }
+    if (!issue) throw new RefusalError({ reason: 'unknown_issue', issueNumber });
+    if (issue.state === 'closed' && !args.force) {
+      throw new RefusalError({ reason: 'issue_closed', issueNumber });
+    }
+    issueTitle = issue.title;
     if (!args.force) {
       const missing = await computeBlockedBy(issueNumber);
       if (missing.length > 0) throw new RefusalError({ reason: 'blocked', blockedBy: missing });
@@ -106,13 +121,7 @@ export async function spawnRun(args: {
   const runId = res.rows[0].id;
 
   if (issueNumber !== null) {
-    let title = `#${issueNumber}`;
-    try {
-      const issue = await github.getIssue(issueNumber);
-      if (issue) title = issue.title;
-    } catch {
-      // cache title is cosmetic; sync hardens it in Phase 2
-    }
+    const title = issueTitle ?? `#${issueNumber}`;
     await query(
       `insert into issue_cache (number, title, board_status, active_run_id)
        values ($1, $2, 'in-progress', $3)

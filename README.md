@@ -91,6 +91,21 @@ dispatch, gated runs with suspend/resume answers, cancels, artifacts,
 notifications, webhooks, schedules, and live events all ran over the API in
 this validation round.
 
+## Operator runbook: conflicted PR (v1 policy, spec §12.1)
+
+Parallel runs on overlapping **lines** produce a conflicted PR after the first
+one merges — the factory does not detect this in v1 (dependencies are the
+intended serialization tool). Validated recovery:
+
+1. Close the conflicted PR (do not merge).
+2. Delete its `issue-N` branch.
+3. Re-dispatch the issue (optionally noting what changed on main in the brief).
+   The fresh run branches from the new main and produces a clean PR.
+
+Same-file edits in **different hunks** (e.g. one run editing `<head>`, another
+the nav) auto-merge fine — only same-line overlap needs the runbook. Cancelled
+runs release the issue back to `backlog` on the next sync.
+
 ## Design notes (implementation choices within the spec)
 
 - **Steps are stored as a jsonb array** on `pipeline_definitions` — pipelines
