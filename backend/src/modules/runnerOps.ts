@@ -14,6 +14,7 @@ import * as github from './github.js';
 import * as provisioner from './provisioner.js';
 import { getSetting } from './settings.js';
 import { notify } from './notify.js';
+import { archiveRunArtifacts } from './artifacts.js';
 
 /**
  * Everything the runner does to the world, as plain async functions called
@@ -357,6 +358,8 @@ export async function failRun(
     [run.id],
   );
   await sumRunCost(run.id);
+  // Preserve the record; the branch keeps its files for human debugging.
+  await archiveRunArtifacts(run.id, run.branch);
   if (run.issue_number !== null) {
     await query('update issue_cache set active_run_id = null where number = $1', [run.issue_number]);
   }
@@ -389,6 +392,19 @@ export async function completeRun(run: RunCtx): Promise<void> {
   const summary =
     stepVerdicts.rows[stepVerdicts.rows.length - 1]?.verdict.summary ?? 'completed';
 
+  // Archive pipeline/ artifacts to the run record, then clear them off the
+  // branch so the PR diff carries only real code — main never sees pipeline/.
+  const archived = await archiveRunArtifacts(run.id, run.branch);
+  if (archived.length > 0) {
+    try {
+      for (const name of archived) {
+        await github.deleteFile(run.branch, `pipeline/${name}`, `pipeline: archive artifacts for run ${run.id}`);
+      }
+    } catch (err) {
+      console.error(`artifact branch-clear failed for run ${run.id}: ${String(err)}`);
+    }
+  }
+
   // The human reviews code via a PR (spec §9: needs-review = PR awaiting human).
   // Deterministic bookkeeping, so the runner opens it — never a step agent.
   let prUrl: string | null = null;
@@ -417,7 +433,7 @@ export async function completeRun(run: RunCtx): Promise<void> {
       `Pipeline \`${run.pipeline_name}\` · run \`${run.id}\``,
       verdictLines,
       '',
-      'Artifacts: see `pipeline/` on this branch.',
+      `Artifacts (plan, review) are archived on the run record: GET /runs/${run.id}/artifacts/<name>.`,
       ...(run.issue_number !== null ? ['', `Closes #${run.issue_number}`] : []),
     ].join('\n');
     prUrl = await github.ensurePullRequest(run.branch, title, body);

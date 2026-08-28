@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { query } from '../../db/client.js';
 import { spawnRun, cancelRun, RefusalError } from '../../modules/commands.js';
 import { NotReadyError } from '../../modules/health.js';
-import * as github from '../../modules/github.js';
+import { readRunArtifact } from '../../modules/artifacts.js';
 import { listRuns } from '../../modules/projections.js';
 import type { PipelineRunRow, StepRunRow } from '../../domain/types.js';
 
@@ -100,17 +100,12 @@ export async function runsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string; name: string } }>(
     '/runs/:id/artifacts/:name',
     async (req, reply) => {
-      const runs = await query<PipelineRunRow>('select branch from pipeline_runs where id = $1', [
-        req.params.id,
-      ]);
-      const run = runs.rows[0];
-      if (!run) return reply.code(404).send({ error: { code: 'not_found', message: 'no such run' } });
       if (!/^[\w][\w.-]*$/.test(req.params.name)) {
         return reply.code(422).send({ error: { code: 'validation', message: 'bad artifact name' } });
       }
-      const content = await github.readFile(run.branch, `pipeline/${req.params.name}`);
+      const content = await readRunArtifact(req.params.id, req.params.name);
       if (content === null) {
-        return reply.code(404).send({ error: { code: 'not_found', message: 'artifact not on branch' } });
+        return reply.code(404).send({ error: { code: 'not_found', message: 'artifact not found (archive or branch)' } });
       }
       return reply.type('text/plain; charset=utf-8').send(content);
     },

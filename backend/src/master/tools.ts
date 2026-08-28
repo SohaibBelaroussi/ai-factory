@@ -6,6 +6,7 @@ import { spawnRun, cancelRun, answerQuestion, RefusalError } from '../modules/co
 import { NotReadyError } from '../modules/health.js';
 import { getBoard, getIssueDetail, listRuns, listOpenQuestions } from '../modules/projections.js';
 import { syncIssuesIfStale } from '../modules/issueSync.js';
+import { readRunArtifact } from '../modules/artifacts.js';
 import * as github from '../modules/github.js';
 
 /**
@@ -73,13 +74,9 @@ const readArtifactTool = tool(
   'Fetch one artifact (e.g. plan.md, review.md) from a run\'s branch. Use only when the user wants detail beyond the verdict summaries.',
   { runId: z.string(), name: z.string() },
   async ({ runId, name }) => {
-    const runs = await query<{ branch: string }>('select branch from pipeline_runs where id = $1', [
-      runId,
-    ]);
-    if (!runs.rows[0]) return json({ error: 'no such run' });
     if (!/^[\w][\w.-]*$/.test(name)) return json({ error: 'bad artifact name' });
-    const content = await github.readFile(runs.rows[0].branch, `pipeline/${name}`);
-    return json(content === null ? { error: `pipeline/${name} not on branch` } : { name, content });
+    const content = await readRunArtifact(runId, name);
+    return json(content === null ? { error: `artifact ${name} not found` } : { name, content });
   },
 );
 
