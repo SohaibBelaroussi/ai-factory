@@ -58,7 +58,7 @@ export default function SettingsPage(): React.ReactNode {
     <div>
       <PageHeader title="Settings & Health">
         {health.data && (
-          <StatusBadge status={health.data.ready ? 'completed' : 'failed'} />
+          <StatusBadge status={health.data.ready ? 'ready' : 'not ready'} />
         )}
       </PageHeader>
 

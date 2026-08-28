@@ -46,6 +46,12 @@ const STATUS_STYLE: Record<string, string> = {
   blocked: 'bg-err/15 text-err',
   // verdicts
   reject: 'bg-err/15 text-err',
+  // pipelines
+  enabled: 'bg-ok/15 text-ok',
+  disabled: 'bg-faint/20 text-dim',
+  // health
+  ready: 'bg-ok/15 text-ok',
+  'not ready': 'bg-err/15 text-err',
 };
 
 export function StatusBadge({ status }: { status: string }): ReactNode {
