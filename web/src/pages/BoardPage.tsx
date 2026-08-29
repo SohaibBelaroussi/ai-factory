@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { ExternalLinkIcon, PlayIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { getBoard } from '../lib/api';
 import type { BoardRow } from '../lib/types';
 import { DispatchDialog } from '../components/DispatchDialog';
 import { Empty, ErrorNote, PageHeader, Spinner } from '../components/ui';
+import { cn } from '@/lib/utils';
 
 const COLUMNS: { key: string; title: string; accent: string }[] = [
-  { key: 'backlog', title: 'Backlog', accent: 'border-faint' },
-  { key: 'blocked', title: 'Blocked', accent: 'border-err' },
-  { key: 'in-progress', title: 'In progress', accent: 'border-accent' },
-  { key: 'needs-review', title: 'Needs review', accent: 'border-warn' },
-  { key: 'completed', title: 'Completed', accent: 'border-ok' },
+  { key: 'backlog', title: 'Backlog', accent: 'bg-neutral-400' },
+  { key: 'blocked', title: 'Blocked', accent: 'bg-red-500' },
+  { key: 'in-progress', title: 'In progress', accent: 'bg-blue-500' },
+  { key: 'needs-review', title: 'Needs review', accent: 'bg-amber-500' },
+  { key: 'completed', title: 'Completed', accent: 'bg-emerald-500' },
 ];
 
 function IssueCard({
@@ -23,40 +26,41 @@ function IssueCard({
 }): React.ReactNode {
   const dispatchable = issue.boardStatus === 'backlog' || issue.boardStatus === 'blocked';
   return (
-    <div className="group rounded-md border border-border bg-panel-2 p-3">
-      <div className="flex items-start justify-between gap-2">
-        <Link to={`/issues/${issue.number}`} className="text-sm font-medium hover:text-accent">
-          <span className="text-dim">#{issue.number}</span> {issue.title}
-        </Link>
-      </div>
+    <div className="group rounded-xl border border-border bg-card p-3 shadow-xs transition-shadow hover:shadow-sm">
+      <Link className="text-sm hover:text-primary" to={`/issues/${issue.number}`}>
+        <span className="text-muted-foreground">#{issue.number}</span>{' '}
+        <span className="font-medium">{issue.title}</span>
+      </Link>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         {issue.blockedBy.length > 0 && (
-          <span className="text-err" title="unmet dependencies">
+          <span className="text-red-600 dark:text-red-400" title="unmet dependencies">
             ⛓ {issue.blockedBy.map((n) => `#${n}`).join(' ')}
           </span>
         )}
         {issue.activeRunId && (
-          <Link to={`/runs/${issue.activeRunId}`} className="text-accent hover:underline">
+          <Link className="text-primary hover:underline" to={`/runs/${issue.activeRunId}`}>
             active run →
           </Link>
         )}
         {issue.linkedPr && (
           <a
+            className="inline-flex items-center gap-1 text-amber-700 hover:underline dark:text-amber-400"
             href={issue.linkedPr}
-            target="_blank"
             rel="noreferrer"
-            className="text-warn hover:underline"
+            target="_blank"
           >
-            PR ↗
+            PR <ExternalLinkIcon className="size-3" />
           </a>
         )}
         {dispatchable && (
-          <button
+          <Button
+            className="ml-auto h-6 gap-1 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100"
             onClick={() => onDispatch(issue.number)}
-            className="ml-auto rounded bg-accent-dim px-2 py-0.5 font-medium opacity-0 transition-opacity group-hover:opacity-100"
+            size="sm"
+            variant="secondary"
           >
-            run ▸
-          </button>
+            <PlayIcon className="size-3" /> run
+          </Button>
         )}
       </div>
     </div>
@@ -73,22 +77,18 @@ export default function BoardPage(): React.ReactNode {
     list.push(row);
     byStatus.set(row.boardStatus, list);
   }
-  // Anything with an unknown status still deserves a column.
   const extraStatuses = [...byStatus.keys()].filter((s) => !COLUMNS.some((c) => c.key === s));
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Board">
-        <button
-          onClick={() => setDialog({})}
-          className="rounded-md bg-accent-dim px-3 py-1.5 text-sm font-medium hover:bg-accent"
-        >
+        <Button onClick={() => setDialog({})} size="sm">
           + dispatch
-        </button>
+        </Button>
       </PageHeader>
 
       {board.isLoading && (
-        <div className="p-6">
+        <div className="p-8">
           <Spinner />
         </div>
       )}
@@ -96,23 +96,22 @@ export default function BoardPage(): React.ReactNode {
       {board.data?.length === 0 && <Empty>no issues in the cache yet — sync runs on read</Empty>}
 
       {board.data && board.data.length > 0 && (
-        <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-6">
-          {[...COLUMNS, ...extraStatuses.map((s) => ({ key: s, title: s, accent: 'border-faint' }))].map(
+        <div className="flex min-h-0 flex-1 gap-5 overflow-x-auto p-8 pt-6">
+          {[...COLUMNS, ...extraStatuses.map((s) => ({ key: s, title: s, accent: 'bg-neutral-400' }))].map(
             (col) => {
               const items = byStatus.get(col.key) ?? [];
               return (
-                <div key={col.key} className="flex w-64 shrink-0 flex-col">
-                  <div
-                    className={`mb-2 flex items-center justify-between border-b-2 ${col.accent} pb-1.5`}
-                  >
-                    <span className="text-sm font-semibold">{col.title}</span>
-                    <span className="text-xs text-dim">{items.length}</span>
+                <div className="flex w-72 shrink-0 flex-col" key={col.key}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className={cn('size-2 rounded-full', col.accent)} />
+                    <span className="font-display text-sm">{col.title}</span>
+                    <span className="text-muted-foreground text-xs">{items.length}</span>
                   </div>
-                  <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+                  <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto pb-4">
                     {items.map((issue) => (
                       <IssueCard
-                        key={issue.number}
                         issue={issue}
+                        key={issue.number}
                         onDispatch={(n) => setDialog({ issueNumber: n })}
                       />
                     ))}

@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
+import { ExternalLinkIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getIssue } from '../lib/api';
 import { shortId, timeAgo } from '../lib/format';
 import { DispatchDialog } from '../components/DispatchDialog';
-import { ErrorNote, PageHeader, Panel, Spinner, StatusBadge } from '../components/ui';
+import { ErrorNote, PageHeader, Spinner, StatusBadge } from '../components/ui';
+import { cn } from '@/lib/utils';
 
 export default function IssueDetailPage(): React.ReactNode {
   const { n } = useParams<{ n: string }>();
@@ -18,7 +23,7 @@ export default function IssueDetailPage(): React.ReactNode {
 
   if (issue.isLoading)
     return (
-      <div className="p-6">
+      <div className="p-8">
         <Spinner />
       </div>
     );
@@ -31,93 +36,108 @@ export default function IssueDetailPage(): React.ReactNode {
       <PageHeader
         title={
           <span>
-            <span className="text-dim">#{d.number}</span> {d.title}
+            <span className="text-muted-foreground">#{d.number}</span> {d.title}
           </span>
         }
       >
         <StatusBadge status={d.boardStatus} />
-        <button
-          onClick={() => setDialog(true)}
-          className="rounded-md bg-accent-dim px-3 py-1.5 text-sm font-medium hover:bg-accent"
-        >
+        <Button onClick={() => setDialog(true)} size="sm">
           + dispatch
-        </button>
+        </Button>
       </PageHeader>
 
-      <div className="grid max-w-4xl gap-6 p-6">
-        <Panel className="p-4">
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-dim">
-            <span>github: {d.state}</span>
-            {d.labels.map((l) => (
-              <span key={l} className="rounded-full bg-panel-2 px-2 py-0.5">
-                {l}
-              </span>
-            ))}
-            {d.linkedBranch && <span className="font-mono">⎇ {d.linkedBranch}</span>}
-            {d.linkedPr && (
-              <a href={d.linkedPr} target="_blank" rel="noreferrer" className="text-warn hover:underline">
-                PR ↗
-              </a>
-            )}
-          </div>
-          <pre className="font-sans whitespace-pre-wrap text-sm text-ink">{d.body || '(no body)'}</pre>
-        </Panel>
+      <div className="mx-auto grid max-w-4xl gap-6 p-8 pt-6">
+        <Card>
+          <CardContent>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+              <span>github: {d.state}</span>
+              {d.labels.map((l) => (
+                <Badge key={l} variant="secondary">
+                  {l}
+                </Badge>
+              ))}
+              {d.linkedBranch && <span className="font-mono">⎇ {d.linkedBranch}</span>}
+              {d.linkedPr && (
+                <a
+                  className="inline-flex items-center gap-1 text-amber-700 hover:underline dark:text-amber-400"
+                  href={d.linkedPr}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  PR <ExternalLinkIcon className="size-3" />
+                </a>
+              )}
+            </div>
+            <pre className="whitespace-pre-wrap font-sans text-sm">{d.body || '(no body)'}</pre>
+          </CardContent>
+        </Card>
 
         {d.dependencies.blockedBy.length > 0 && (
-          <Panel className="p-4">
-            <div className="mb-2 text-sm font-semibold">Dependencies</div>
-            <div className="flex flex-wrap gap-2 text-sm">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-base">Dependencies</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
               {d.dependencies.blockedBy.map((dep) => {
                 const ok = d.dependencies.satisfied.includes(dep);
                 return (
                   <Link
+                    className={cn(
+                      'rounded-lg px-2.5 py-1 text-sm',
+                      ok
+                        ? 'bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300'
+                        : 'bg-red-600/10 text-red-700 dark:bg-red-400/10 dark:text-red-300',
+                    )}
                     key={dep}
                     to={`/issues/${dep}`}
-                    className={`rounded-md px-2 py-1 ${ok ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err'}`}
                   >
                     #{dep} {ok ? '✓' : '✗'}
                   </Link>
                 );
               })}
-            </div>
-          </Panel>
+            </CardContent>
+          </Card>
         )}
 
         {d.pastRuns.length > 0 && (
-          <Panel>
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold">Runs</div>
-            <ul className="divide-y divide-border/50">
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b border-border py-4">
+              <CardTitle className="font-display text-base">Runs</CardTitle>
+            </CardHeader>
+            <ul className="divide-y divide-border">
               {d.pastRuns.map((run) => (
-                <li key={run.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                  <Link to={`/runs/${run.id}`} className="font-mono text-accent hover:underline">
+                <li className="flex items-center gap-3 px-5 py-3 text-sm" key={run.id}>
+                  <Link className="font-mono text-primary hover:underline" to={`/runs/${run.id}`}>
                     {shortId(run.id)}
                   </Link>
                   <StatusBadge status={run.status} />
-                  <span className="text-dim">{run.pipeline}</span>
-                  <span className="min-w-0 flex-1 truncate text-dim" title={run.outcome ?? ''}>
+                  <span className="text-muted-foreground">{run.pipeline}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground" title={run.outcome ?? ''}>
                     {run.outcome ?? ''}
                   </span>
-                  <span className="whitespace-nowrap text-xs text-faint">{timeAgo(run.createdAt)}</span>
+                  <span className="whitespace-nowrap text-muted-foreground/60 text-xs">
+                    {timeAgo(run.createdAt)}
+                  </span>
                 </li>
               ))}
             </ul>
-          </Panel>
+          </Card>
         )}
 
         {d.comments.length > 0 && (
-          <Panel>
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-              Comments ({d.comments.length})
-            </div>
-            <ul className="divide-y divide-border/50">
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b border-border py-4">
+              <CardTitle className="font-display text-base">Comments ({d.comments.length})</CardTitle>
+            </CardHeader>
+            <ul className="divide-y divide-border">
               {d.comments.map((c, i) => (
-                <li key={i} className="px-4 py-3">
-                  <div className="mb-1 text-xs font-medium text-dim">{c.author}</div>
-                  <pre className="font-sans whitespace-pre-wrap text-sm">{c.body}</pre>
+                <li className="px-5 py-4" key={i}>
+                  <div className="mb-1 font-medium text-muted-foreground text-xs">{c.author}</div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm">{c.body}</pre>
                 </li>
               ))}
             </ul>
-          </Panel>
+          </Card>
         )}
       </div>
 

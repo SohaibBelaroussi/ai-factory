@@ -1,14 +1,23 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
+import { FileTextIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cancelRun, getArtifact, getRun } from '../lib/api';
 import { cost, duration, shortId, timeAgo } from '../lib/format';
 import type { RunStep } from '../lib/types';
 import { LogViewer } from '../components/LogViewer';
 import { QuestionCard } from '../components/QuestionCard';
-import { ErrorNote, PageHeader, Panel, Spinner, StatusBadge } from '../components/ui';
+import { ErrorNote, PageHeader, Spinner, StatusBadge } from '../components/ui';
 
-function ArtifactModal({
+function ArtifactDialog({
   runId,
   name,
   onClose,
@@ -22,24 +31,22 @@ function ArtifactModal({
     queryFn: () => getArtifact(runId, name),
   });
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="flex h-[80vh] w-[760px] max-w-[94vw] flex-col rounded-lg border border-border bg-panel shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="font-mono text-sm">pipeline/{name}</span>
-          <button onClick={onClose} className="text-dim hover:text-ink">✕</button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="flex h-[80vh] flex-col sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-sm">pipeline/{name}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg bg-muted p-4">
           {artifact.isLoading && <Spinner />}
           {artifact.isError && <ErrorNote error={artifact.error} />}
           {artifact.data !== undefined && (
-            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{artifact.data}</pre>
+            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+              {artifact.data}
+            </pre>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -59,41 +66,45 @@ function StepRow({
       : []),
   ];
   return (
-    <li className="px-4 py-3">
+    <li className="px-5 py-4">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">
           {step.index + 1}. {step.name}
         </span>
-        {step.attempt > 1 && <span className="text-xs text-warn">attempt {step.attempt}</span>}
-        <StatusBadge status={step.status} />
-        {step.verdict && step.verdict.status !== 'done' && (
-          <StatusBadge status={step.verdict.status} />
+        {step.attempt > 1 && (
+          <span className="text-amber-700 text-xs dark:text-amber-400">attempt {step.attempt}</span>
         )}
-        <span className="ml-auto flex items-center gap-3 text-xs text-dim">
+        <StatusBadge status={step.status} />
+        {step.verdict && step.verdict.status !== 'done' && <StatusBadge status={step.verdict.status} />}
+        <span className="ml-auto flex items-center gap-3 text-muted-foreground text-xs">
           <span>{duration(step.startedAt, step.endedAt)}</span>
           <span>{cost(step.costUsd)}</span>
         </span>
       </div>
-      {step.verdict && (
-        <p className="mt-1.5 text-sm text-dim">{step.verdict.summary}</p>
-      )}
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+      {step.verdict && <p className="mt-1.5 text-muted-foreground text-sm">{step.verdict.summary}</p>}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         {artifacts.map((name) => (
-          <button
+          <Button
+            className="h-6 gap-1 px-2 font-mono text-xs"
             key={name}
             onClick={() => onArtifact(name)}
-            className="rounded bg-panel-2 px-2 py-0.5 font-mono text-accent hover:bg-accent/15"
+            size="sm"
+            variant="secondary"
           >
-            📄 {name}
-          </button>
+            <FileTextIcon className="size-3" /> {name}
+          </Button>
         ))}
         {step.commitShas.map((sha) => (
-          <span key={sha} className="rounded bg-panel-2 px-2 py-0.5 font-mono text-faint" title={sha}>
+          <span
+            className="rounded-md bg-muted px-2 py-0.5 font-mono text-muted-foreground"
+            key={sha}
+            title={sha}
+          >
             {sha.slice(0, 7)}
           </span>
         ))}
         {step.sessionId && (
-          <span className="font-mono text-faint" title={`session ${step.sessionId}`}>
+          <span className="font-mono text-muted-foreground/60" title={`session ${step.sessionId}`}>
             ⌁ {shortId(step.sessionId)}
           </span>
         )}
@@ -121,7 +132,7 @@ export default function RunDetailPage(): React.ReactNode {
 
   if (run.isLoading)
     return (
-      <div className="p-6">
+      <div className="p-8">
         <Spinner />
       </div>
     );
@@ -136,57 +147,60 @@ export default function RunDetailPage(): React.ReactNode {
     <div>
       <PageHeader
         title={
-          <span className="flex items-center gap-2">
-            <span className="font-mono">{shortId(d.id)}</span>
+          <span className="flex items-center gap-3">
+            <span className="font-mono text-lg">{shortId(d.id)}</span>
             <StatusBadge status={d.status} />
           </span>
         }
       >
         {cancellable && (
-          <button
+          <Button
+            disabled={cancel.isPending}
             onClick={() => {
               if (window.confirm('Cancel this run? Live containers are killed.')) cancel.mutate();
             }}
-            disabled={cancel.isPending}
-            className="rounded-md border border-err/40 px-3 py-1.5 text-sm text-err hover:bg-err/10 disabled:opacity-40"
+            size="sm"
+            variant="destructive"
           >
             {cancel.isPending ? 'cancelling…' : 'cancel run'}
-          </button>
+          </Button>
         )}
       </PageHeader>
 
-      <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div className="grid gap-6 p-8 pt-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div className="grid content-start gap-6">
-          <Panel className="p-4">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <span className="text-dim">pipeline</span>
-              <span>{d.pipeline}</span>
-              <span className="text-dim">issue</span>
-              <span>
-                {d.issueNumber !== null ? (
-                  <Link to={`/issues/${d.issueNumber}`} className="text-accent hover:underline">
-                    #{d.issueNumber}
-                  </Link>
-                ) : (
-                  '—'
-                )}
-              </span>
-              <span className="text-dim">branch</span>
-              <span className="font-mono text-xs">{d.branch}</span>
-              <span className="text-dim">created</span>
-              <span>
-                {timeAgo(d.createdAt)} by {d.createdBy}
-              </span>
-              <span className="text-dim">took</span>
-              <span>{duration(d.createdAt, d.endedAt)}</span>
-              <span className="text-dim">cost</span>
-              <span>{cost(d.costUsd)}</span>
-            </div>
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="mb-1 text-xs text-dim">brief</div>
-              <pre className="font-sans whitespace-pre-wrap text-sm">{d.brief}</pre>
-            </div>
-          </Panel>
+          <Card>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <span className="text-muted-foreground">pipeline</span>
+                <span>{d.pipeline}</span>
+                <span className="text-muted-foreground">issue</span>
+                <span>
+                  {d.issueNumber !== null ? (
+                    <Link className="text-primary hover:underline" to={`/issues/${d.issueNumber}`}>
+                      #{d.issueNumber}
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
+                </span>
+                <span className="text-muted-foreground">branch</span>
+                <span className="font-mono text-xs">{d.branch}</span>
+                <span className="text-muted-foreground">created</span>
+                <span>
+                  {timeAgo(d.createdAt)} by {d.createdBy}
+                </span>
+                <span className="text-muted-foreground">took</span>
+                <span>{duration(d.createdAt, d.endedAt)}</span>
+                <span className="text-muted-foreground">cost</span>
+                <span>{cost(d.costUsd)}</span>
+              </div>
+              <div className="mt-4 border-t border-border pt-3">
+                <div className="mb-1 text-muted-foreground text-xs">brief</div>
+                <pre className="whitespace-pre-wrap font-sans text-sm">{d.brief}</pre>
+              </div>
+            </CardContent>
+          </Card>
 
           {(openQuestions.length > 0 || answeredQuestions.length > 0) && (
             <div className="grid gap-3">
@@ -199,28 +213,34 @@ export default function RunDetailPage(): React.ReactNode {
             </div>
           )}
 
-          <Panel>
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold">Steps</div>
-            <ul className="divide-y divide-border/50">
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b border-border py-4">
+              <CardTitle className="font-display text-base">Steps</CardTitle>
+            </CardHeader>
+            <ul className="divide-y divide-border">
               {d.steps.map((step) => (
                 <StepRow
                   key={step.id}
-                  step={step}
-                  outputArtifact={d.definition.steps[step.index]?.outputArtifact ?? null}
                   onArtifact={setArtifact}
+                  outputArtifact={d.definition.steps[step.index]?.outputArtifact ?? null}
+                  step={step}
                 />
               ))}
             </ul>
-          </Panel>
+          </Card>
         </div>
 
-        <Panel className="min-w-0 p-4">
-          <div className="mb-2 text-sm font-semibold">Session log</div>
-          <LogViewer runId={d.id} />
-        </Panel>
+        <Card className="min-w-0 gap-0 py-0">
+          <CardHeader className="border-b border-border py-4">
+            <CardTitle className="font-display text-base">Session log</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <LogViewer runId={d.id} />
+          </CardContent>
+        </Card>
       </div>
 
-      {artifact && <ArtifactModal runId={d.id} name={artifact} onClose={() => setArtifact(null)} />}
+      {artifact && <ArtifactDialog name={artifact} onClose={() => setArtifact(null)} runId={d.id} />}
     </div>
   );
 }

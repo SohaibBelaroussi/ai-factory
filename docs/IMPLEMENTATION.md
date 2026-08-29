@@ -406,6 +406,24 @@ checkboxes incl. ask_human with cap coupling, reorder; server 422s surface
 verbatim) · Questions + notifications (answer + read state) · Settings/health
 (masked settings PUT, health checks, operator token stored browser-side).
 
+Redesign (2026-08-29, operator-requested): the UI was rebuilt on
+shadcn/ui + Vercel's AI SDK Elements (vendored under
+`src/components/{ui,ai-elements}` — owned code, not a dependency) with a
+claude.ai-inspired design: warm ivory/dark palettes (light default, toggle in
+the sidebar, persisted per browser), Lora serif display headings, terracotta
+primary, chat-first layout. "/" is the Master chat; the first send creates
+the conversation (claude.ai behavior). Chat renders markdown via Streamdown,
+tool calls as collapsible cards with highlighted JSON, plus an ambient
+activity rail (active runs + latest notifications). The chat route is
+lazy-loaded so the heavy Elements stack (shiki/streamdown) stays out of the
+base bundle. Theme tokens live in two synced layers in index.css (shadcn
+tokens + legacy factory tokens); vendored components' `accent` classes were
+remapped to `secondary` to avoid colliding with the factory accent token.
+Note for future `npx shadcn add`: it resolves the `@` alias from the ROOT
+tsconfig.json (compilerOptions.paths added there), and PS 5.1 regex patches
+corrupt non-ASCII source — use the agent Write tool for files containing
+unicode.
+
 Dev loop: `npm run dev` in `web/` (Vite proxies /api → localhost:3000);
 `.claude/launch.json` has the `web` config. Prod: `docker compose up -d
 --build web` → http://localhost:8080.

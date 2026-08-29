@@ -1,6 +1,26 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { listPipelines, spawnRun, Refusal } from '../lib/api';
 import { Spinner } from './ui';
 
@@ -52,95 +72,92 @@ export function DispatchDialog({
     !!selected && brief.trim() !== '' && (!issueRequired || issue.trim() !== '') && !dispatch.isPending;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-[480px] max-w-[92vw] rounded-lg border border-border bg-panel shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-          Dispatch a run
-        </div>
-        <div className="grid gap-3 p-4">
-          <label className="grid gap-1 text-xs text-dim">
-            pipeline
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-display text-lg">Dispatch a run</DialogTitle>
+          <DialogDescription>
+            Every dispatch is a plain POST /runs — reproducible with curl.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Pipeline</Label>
             {pipelines.isLoading ? (
               <Spinner />
             ) : (
-              <select
-                value={pipeline}
-                onChange={(e) => setPipeline(e.target.value)}
-                className="rounded-md border border-border bg-panel-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-              >
-                <option value="">— choose —</option>
-                {enabled.map((p) => (
-                  <option key={p.id} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <Select onValueChange={setPipeline} value={pipeline}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="choose a pipeline" />
+                </SelectTrigger>
+                <SelectContent>
+                  {enabled.map((p) => (
+                    <SelectItem key={p.id} value={p.name}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-            {selected && <span className="text-faint">{selected.description}</span>}
-          </label>
+            {selected && (
+              <p className="text-muted-foreground text-xs">{selected.description}</p>
+            )}
+          </div>
 
-          <label className="grid gap-1 text-xs text-dim">
-            issue number {issueRequired ? '(required)' : '(optional)'}
-            <input
-              value={issue}
+          <div className="grid gap-1.5">
+            <Label>Issue number {issueRequired ? '(required)' : '(optional)'}</Label>
+            <Input
+              inputMode="numeric"
               onChange={(e) => setIssue(e.target.value.replace(/\D/g, ''))}
               placeholder="e.g. 12"
-              className="rounded-md border border-border bg-panel-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              value={issue}
             />
-          </label>
+          </div>
 
-          <label className="grid gap-1 text-xs text-dim">
-            brief
-            <textarea
-              value={brief}
+          <div className="grid gap-1.5">
+            <Label>Brief</Label>
+            <Textarea
               onChange={(e) => setBrief(e.target.value)}
-              rows={4}
               placeholder="What should this run accomplish?"
-              className="resize-y rounded-md border border-border bg-panel-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              rows={4}
+              value={brief}
             />
-          </label>
+          </div>
 
-          <label className="flex items-center gap-2 text-xs text-dim">
-            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
-            force (override closed-issue and dependency checks)
+          <label className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Checkbox checked={force} onCheckedChange={(v) => setForce(v === true)} />
+            force — override closed-issue and dependency checks
           </label>
 
           {refusal && (
-            <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs">
-              <div className="mb-1 font-semibold text-warn">
-                refused: {String(refusal.reason ?? 'unknown')}
-              </div>
-              <pre className="overflow-x-auto text-dim">{JSON.stringify(refusal, null, 2)}</pre>
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+              <div className="mb-1 font-semibold">refused: {String(refusal.reason ?? 'unknown')}</div>
+              <pre className="overflow-x-auto text-muted-foreground">
+                {JSON.stringify(refusal, null, 2)}
+              </pre>
             </div>
           )}
           {dispatch.isError && !(dispatch.error instanceof Refusal) && (
-            <div className="rounded-md border border-err/30 bg-err/10 p-3 text-xs text-err">
-              {String(dispatch.error)}
-            </div>
+            <p className="text-destructive text-xs">{String(dispatch.error)}</p>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-dim hover:text-ink">
+
+        <DialogFooter>
+          <Button onClick={onClose} variant="ghost">
             cancel
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!canSubmit}
             onClick={() => {
               setRefusal(null);
               dispatch.mutate();
             }}
-            className="rounded-md bg-accent-dim px-4 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-40"
           >
             {dispatch.isPending ? 'dispatching…' : 'dispatch'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

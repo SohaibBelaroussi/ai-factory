@@ -3,52 +3,90 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Dark ops-console theme. Single deliberate look (no light variant) —
- * the factory floor is a control room. Two token layers:
- *  1. Factory tokens (v1 screens): bg / panel / ink / dim / accent / …
- *  2. shadcn tokens (v2 screens + AI Elements): background / foreground / …
- *     — values tuned to the same palette so both generations match.
+ * Claude-inspired warm theme, light and dark. Two token layers share one
+ * palette:
+ *  1. shadcn tokens (background / foreground / primary / …) — used by the
+ *     ui primitives and AI Elements.
+ *  2. Factory tokens (bg / panel / ink / dim / accent / ok / warn / err) —
+ *     used by bespoke pieces like the log viewer and status pills.
+ * Both flip together via the `dark` class on <html>.
  */
-@theme {
-  --color-bg: #0b0e14;
-  --color-panel: #11151d;
-  --color-panel-2: #171d28;
-  --color-border: #222a37;
-  --color-ink: #d7dde8;
-  --color-dim: #8b94a7;
-  --color-faint: #5b6474;
-  --color-accent: #4f9cf9;
-  --color-accent-dim: #2c5d9e;
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-err: #f87171;
 
-  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+:root {
+  /* shadcn */
+  --background: #faf9f5;
+  --foreground: #1f1e1d;
+  --card: #ffffff;
+  --card-foreground: #1f1e1d;
+  --popover: #ffffff;
+  --popover-foreground: #1f1e1d;
+  --primary: #c96442;
+  --primary-foreground: #ffffff;
+  --secondary: #f0eee5;
+  --secondary-foreground: #1f1e1d;
+  --muted: #f0eee5;
+  --muted-foreground: #73726c;
+  --accent: #f0eee5;
+  --accent-foreground: #1f1e1d;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e2d9;
+  --input: #d9d7cc;
+  --ring: #c96442;
+  --radius: 0.625rem;
+  --sidebar: #f0eee5;
+  --sidebar-border: #e4e2d9;
+
+  /* factory */
+  --f-bg: #faf9f5;
+  --f-panel: #ffffff;
+  --f-panel-2: #f0eee5;
+  --f-border: #e4e2d9;
+  --f-ink: #1f1e1d;
+  --f-dim: #73726c;
+  --f-faint: #a5a39b;
+  --f-accent: #c96442;
+  --f-accent-dim: #a54f33;
+  --f-ok: #047857;
+  --f-warn: #b45309;
+  --f-err: #dc2626;
 }
 
-:root,
 .dark {
-  --background: #0b0e14;
-  --foreground: #d7dde8;
-  --card: #11151d;
-  --card-foreground: #d7dde8;
-  --popover: #171d28;
-  --popover-foreground: #d7dde8;
-  --primary: #4f9cf9;
-  --primary-foreground: #0b0e14;
-  --secondary: #171d28;
-  --secondary-foreground: #d7dde8;
-  --muted: #171d28;
-  --muted-foreground: #8b94a7;
-  --accent: #171d28;
-  --accent-foreground: #d7dde8;
+  --background: #262624;
+  --foreground: #edece7;
+  --card: #30302e;
+  --card-foreground: #edece7;
+  --popover: #33322f;
+  --popover-foreground: #edece7;
+  --primary: #d97757;
+  --primary-foreground: #ffffff;
+  --secondary: #3a3936;
+  --secondary-foreground: #edece7;
+  --muted: #33322f;
+  --muted-foreground: #a5a39b;
+  --accent: #3a3936;
+  --accent-foreground: #edece7;
   --destructive: #f87171;
-  --destructive-foreground: #0b0e14;
-  --border: #222a37;
-  --input: #222a37;
-  --ring: #4f9cf9;
-  --radius: 0.5rem;
+  --destructive-foreground: #262624;
+  --border: #3e3d39;
+  --input: #4a4945;
+  --ring: #d97757;
+  --sidebar: #1f1e1d;
+  --sidebar-border: #33322f;
+
+  --f-bg: #262624;
+  --f-panel: #30302e;
+  --f-panel-2: #3a3936;
+  --f-border: #3e3d39;
+  --f-ink: #edece7;
+  --f-dim: #a5a39b;
+  --f-faint: #7a7870;
+  --f-accent: #d97757;
+  --f-accent-dim: #8f4a2f;
+  --f-ok: #34d399;
+  --f-warn: #fbbf24;
+  --f-err: #f87171;
 }
 
 @theme inline {
@@ -70,10 +108,29 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-border: var(--sidebar-border);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --color-bg: var(--f-bg);
+  --color-panel: var(--f-panel);
+  --color-panel-2: var(--f-panel-2);
+  --color-ink: var(--f-ink);
+  --color-dim: var(--f-dim);
+  --color-faint: var(--f-faint);
+  --color-accent: var(--f-accent);
+  --color-accent-dim: var(--f-accent-dim);
+  --color-ok: var(--f-ok);
+  --color-warn: var(--f-warn);
+  --color-err: var(--f-err);
+  --color-border: var(--f-border);
+
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Lora", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
 }
 
 html,
@@ -83,10 +140,16 @@ body,
 }
 
 body {
-  background-color: var(--color-bg);
-  color: var(--color-ink);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 14px;
+}
+
+/* Display headings get the serif — the claude.ai signature. */
+.font-display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
 }
 
 ::-webkit-scrollbar {
@@ -97,9 +160,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a3342;
+  background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #38445a;
+  background: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
 }

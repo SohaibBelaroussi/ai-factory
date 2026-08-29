@@ -1,110 +1,205 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import {
+  BellIcon,
+  KanbanSquareIcon,
+  ListTreeIcon,
+  MessageSquareIcon,
+  MoonIcon,
+  PlusIcon,
+  SettingsIcon,
+  SunIcon,
+  WorkflowIcon,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { createChat, listChats, listNotifications } from './lib/api';
 import { useBusStatus } from './lib/events';
+import { getTheme, setTheme } from './lib/theme';
+import { timeAgo } from './lib/format';
+import { cn } from '@/lib/utils';
 import BoardPage from './pages/BoardPage';
 import RunsPage from './pages/RunsPage';
 import RunDetailPage from './pages/RunDetailPage';
-import ChatPage from './pages/ChatPage';
-import { lazy, Suspense } from 'react';
 import IssueDetailPage from './pages/IssueDetailPage';
 import PipelinesPage from './pages/PipelinesPage';
-
-// v2 pulls in the AI Elements stack (streamdown/shiki/mermaid) — keep it out
-// of the v1 bundle.
-const ChatV2Page = lazy(() => import('./pages/v2/ChatV2Page'));
 import PipelineEditorPage from './pages/PipelineEditorPage';
 import QuestionsPage from './pages/QuestionsPage';
 import SettingsPage from './pages/SettingsPage';
-import { NotificationBell } from './components/NotificationBell';
+
+// Chat pulls in the AI Elements stack (streamdown/shiki) — code-split it.
+const ChatPage = lazy(() => import('./pages/ChatPage'));
 
 const NAV = [
-  { to: '/board', label: 'Board' },
-  { to: '/runs', label: 'Runs' },
-  { to: '/chat', label: 'Chat' },
-  { to: '/pipelines', label: 'Pipelines' },
-  { to: '/questions', label: 'Questions' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/', label: 'Chat', icon: MessageSquareIcon, end: true },
+  { to: '/board', label: 'Board', icon: KanbanSquareIcon },
+  { to: '/runs', label: 'Runs', icon: ListTreeIcon },
+  { to: '/pipelines', label: 'Pipelines', icon: WorkflowIcon },
+  { to: '/questions', label: 'Inbox', icon: BellIcon },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 function BusDot(): React.ReactNode {
   const status = useBusStatus();
   const color =
-    status === 'open' ? 'bg-ok' : status === 'connecting' ? 'bg-warn' : 'bg-err';
-  const label = status === 'open' ? 'live' : status === 'connecting' ? 'connecting' : 'offline';
+    status === 'open' ? 'bg-emerald-500' : status === 'connecting' ? 'bg-amber-500' : 'bg-red-500';
+  const label = status === 'open' ? 'live' : status;
   return (
-    <span className="flex items-center gap-1.5 text-xs text-dim" title={`event stream: ${label}`}>
-      <span className={`inline-block size-2 rounded-full ${color}`} />
+    <span
+      className="flex items-center gap-1.5 text-muted-foreground text-xs"
+      title={`event stream: ${label}`}
+    >
+      <span className={cn('inline-block size-2 rounded-full', color)} />
       {label}
     </span>
   );
 }
 
-function V1Shell(): React.ReactNode {
+function ThemeToggle(): React.ReactNode {
+  const [theme, set] = useState(getTheme());
   return (
-    <div className="flex h-full">
-      <aside className="flex w-48 shrink-0 flex-col border-r border-border bg-panel">
-        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-          <span className="text-lg">🏭</span>
-          <span className="font-semibold tracking-tight">AI Factory</span>
-        </div>
-        <nav className="flex flex-col gap-0.5 p-2">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `rounded-md px-3 py-2 text-sm transition-colors ${
-                  isActive
-                    ? 'bg-panel-2 font-medium text-ink'
-                    : 'text-dim hover:bg-panel-2 hover:text-ink'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="px-2 pt-2">
-          <NavLink
-            to="/v2"
-            className="block rounded-md border border-dashed border-accent/40 px-3 py-2 text-sm text-accent hover:bg-accent/10"
-          >
-            ✨ Chat v2 preview
-          </NavLink>
-        </div>
-        <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-3">
-          <BusDot />
-          <NotificationBell />
-        </div>
-      </aside>
+    <Button
+      onClick={() => {
+        const next = theme === 'dark' ? 'light' : 'dark';
+        setTheme(next);
+        set(next);
+      }}
+      size="icon-sm"
+      title={theme === 'dark' ? 'switch to light' : 'switch to dark'}
+      variant="ghost"
+    >
+      {theme === 'dark' ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
+    </Button>
+  );
+}
 
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<Navigate to="/board" replace />} />
-          <Route path="/board" element={<BoardPage />} />
-          <Route path="/runs" element={<RunsPage />} />
-          <Route path="/runs/:id" element={<RunDetailPage />} />
-          <Route path="/issues/:n" element={<IssueDetailPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:id" element={<ChatPage />} />
-          <Route path="/pipelines" element={<PipelinesPage />} />
-          <Route path="/pipelines/new" element={<PipelineEditorPage />} />
-          <Route path="/pipelines/:id" element={<PipelineEditorPage />} />
-          <Route path="/questions" element={<QuestionsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </main>
-    </div>
+function UnreadBadge(): React.ReactNode {
+  const { data } = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: () => listNotifications({ unread: true, limit: 200 }),
+  });
+  const count = data?.length ?? 0;
+  if (count === 0) return null;
+  return (
+    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-semibold text-[10px] text-primary-foreground">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function Sidebar(): React.ReactNode {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const chats = useQuery({ queryKey: ['chats'], queryFn: listChats });
+  const newChat = useMutation({
+    mutationFn: createChat,
+    onSuccess: (res) => navigate(`/chat/${res.chatId}`),
+  });
+  const onChat = location.pathname === '/' || location.pathname.startsWith('/chat/');
+
+  return (
+    <aside className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <span className="text-xl">🏭</span>
+        <span className="font-display text-lg">AI Factory</span>
+      </div>
+
+      <div className="px-3">
+        <Button
+          className="w-full justify-start gap-2 rounded-xl"
+          disabled={newChat.isPending}
+          onClick={() => newChat.mutate()}
+        >
+          <PlusIcon className="size-4" /> New chat
+        </Button>
+      </div>
+
+      <nav className="mt-3 flex flex-col gap-0.5 px-3">
+        {NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                isActive || (item.end && onChat && item.to === '/')
+                  ? 'bg-background font-medium text-foreground shadow-sm dark:bg-secondary'
+                  : 'text-muted-foreground hover:bg-background/60 hover:text-foreground dark:hover:bg-secondary/60',
+              )
+            }
+          >
+            <item.icon className="size-4" />
+            {item.label}
+            {item.to === '/questions' && <UnreadBadge />}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+        <p className="px-3 pb-1 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Recents
+        </p>
+        {chats.isLoading && (
+          <div className="space-y-2 px-3 py-1">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        )}
+        {chats.data?.slice(0, 12).map((c) => (
+          <NavLink
+            key={c.id}
+            to={`/chat/${c.id}`}
+            className={({ isActive }) =>
+              cn(
+                'block truncate rounded-lg px-3 py-1.5 text-sm',
+                isActive
+                  ? 'bg-background font-medium text-foreground dark:bg-secondary'
+                  : 'text-muted-foreground hover:bg-background/60 hover:text-foreground dark:hover:bg-secondary/60',
+              )
+            }
+            title={c.title ?? undefined}
+          >
+            {c.title ?? `chat · ${timeAgo(c.last_message_at)}`}
+          </NavLink>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-sidebar-border px-4 py-3">
+        <BusDot />
+        <ThemeToggle />
+      </div>
+    </aside>
   );
 }
 
 export default function App(): React.ReactNode {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-dim">loading…</div>}>
-      <Routes>
-        <Route path="/v2" element={<ChatV2Page />} />
-        <Route path="/v2/chat/:id" element={<ChatV2Page />} />
-        <Route path="*" element={<V1Shell />} />
-      </Routes>
-    </Suspense>
+    <div className="flex h-full">
+      <Sidebar />
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <Suspense
+          fallback={<div className="p-8 text-muted-foreground text-sm">loading…</div>}
+        >
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/chat/:id" element={<ChatPage />} />
+            <Route path="/chat" element={<Navigate to="/" replace />} />
+            <Route path="/v2" element={<Navigate to="/" replace />} />
+            <Route path="/v2/chat/:id" element={<Navigate to="/" replace />} />
+            <Route path="/board" element={<BoardPage />} />
+            <Route path="/runs" element={<RunsPage />} />
+            <Route path="/runs/:id" element={<RunDetailPage />} />
+            <Route path="/issues/:n" element={<IssueDetailPage />} />
+            <Route path="/pipelines" element={<PipelinesPage />} />
+            <Route path="/pipelines/new" element={<PipelineEditorPage />} />
+            <Route path="/pipelines/:id" element={<PipelineEditorPage />} />
+            <Route path="/questions" element={<QuestionsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </Suspense>
+      </main>
+    </div>
   );
 }

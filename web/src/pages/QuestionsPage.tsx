@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { listNotifications, listQuestions, markNotificationsRead } from '../lib/api';
-import { timeAgo } from '../lib/format';
-import { shortId } from '../lib/format';
+import { shortId, timeAgo } from '../lib/format';
 import { QuestionCard } from '../components/QuestionCard';
-import { Empty, ErrorNote, PageHeader, Panel, Spinner } from '../components/ui';
+import { Empty, ErrorNote, PageHeader, Spinner } from '../components/ui';
+import { cn } from '@/lib/utils';
 
 const EVENT_ICON: Record<string, string> = {
   'waiting-human': '❓',
@@ -32,83 +34,84 @@ export default function QuestionsPage(): React.ReactNode {
 
   return (
     <div>
-      <PageHeader title="Questions & Notifications">
+      <PageHeader title="Inbox">
         {unreadCount > 0 && (
-          <button
-            onClick={() => markAll.mutate()}
+          <Button
             disabled={markAll.isPending}
-            className="rounded-md border border-border px-3 py-1.5 text-sm text-dim hover:text-ink disabled:opacity-40"
+            onClick={() => markAll.mutate()}
+            size="sm"
+            variant="outline"
           >
             mark all read ({unreadCount})
-          </button>
+          </Button>
         )}
       </PageHeader>
 
-      <div className="grid max-w-4xl gap-6 p-6">
+      <div className="mx-auto grid max-w-4xl gap-8 p-8 pt-6">
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-warn">
-            Pending questions {open.data && open.data.length > 0 ? `(${open.data.length})` : ''}
+          <h2 className="font-display mb-3 text-base">
+            Pending questions{open.data && open.data.length > 0 ? ` (${open.data.length})` : ''}
           </h2>
           {open.isLoading && <Spinner />}
           {open.isError && <ErrorNote error={open.error} />}
           {open.data?.length === 0 && (
-            <Panel>
+            <Card>
               <Empty>nothing is waiting on you — runs proceed on their own</Empty>
-            </Panel>
+            </Card>
           )}
           <div className="grid gap-3">
             {open.data?.map((q) => (
               <QuestionCard
-                key={q.id}
-                question={q}
                 context={
                   <span>
                     ·{' '}
-                    <Link to={`/runs/${q.pipeline_run_id}`} className="text-accent hover:underline">
+                    <Link className="text-primary hover:underline" to={`/runs/${q.pipeline_run_id}`}>
                       {q.pipeline_name} {shortId(q.pipeline_run_id)}
                     </Link>
                     {q.issue_number !== null && (
                       <>
                         {' · '}
-                        <Link to={`/issues/${q.issue_number}`} className="text-accent hover:underline">
+                        <Link className="text-primary hover:underline" to={`/issues/${q.issue_number}`}>
                           #{q.issue_number}
                         </Link>
                       </>
                     )}
                   </span>
                 }
+                key={q.id}
+                question={q}
               />
             ))}
           </div>
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold">Notifications</h2>
+          <h2 className="font-display mb-3 text-base">Notifications</h2>
           {notifications.isLoading && <Spinner />}
           {notifications.isError && <ErrorNote error={notifications.error} />}
           {notifications.data?.length === 0 && (
-            <Panel>
+            <Card>
               <Empty>no notifications yet</Empty>
-            </Panel>
+            </Card>
           )}
           {notifications.data && notifications.data.length > 0 && (
-            <Panel>
-              <ul className="divide-y divide-border/50">
+            <Card className="gap-0 py-0">
+              <ul className="divide-y divide-border">
                 {notifications.data.map((n) => (
                   <li
+                    className={cn('flex items-start gap-3 px-5 py-3', n.read && 'opacity-50')}
                     key={n.id}
-                    className={`flex items-start gap-3 px-4 py-2.5 ${n.read ? 'opacity-50' : ''}`}
                   >
                     <span className="mt-0.5">{EVENT_ICON[n.event] ?? '•'}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm">{n.summary}</div>
-                      <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
+                      <div className="mt-0.5 flex items-center gap-2 text-muted-foreground/70 text-xs">
                         <span>{n.event}</span>
                         <span>· {timeAgo(n.created_at)}</span>
                         {n.pipeline_run_id && (
                           <Link
+                            className="text-primary hover:underline"
                             to={`/runs/${n.pipeline_run_id}`}
-                            className="text-accent hover:underline"
                           >
                             run {shortId(n.pipeline_run_id)}
                           </Link>
@@ -117,8 +120,8 @@ export default function QuestionsPage(): React.ReactNode {
                     </div>
                     {!n.read && (
                       <button
+                        className="shrink-0 text-muted-foreground text-xs hover:text-foreground"
                         onClick={() => markOne.mutate(n.id)}
-                        className="shrink-0 text-xs text-dim hover:text-ink"
                         title="mark read"
                       >
                         ✓
@@ -127,7 +130,7 @@ export default function QuestionsPage(): React.ReactNode {
                   </li>
                 ))}
               </ul>
-            </Panel>
+            </Card>
           )}
         </section>
       </div>

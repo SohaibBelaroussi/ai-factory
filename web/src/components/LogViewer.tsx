@@ -7,6 +7,9 @@ import type { LogRow } from '../lib/types';
  * Live tail of a run's step_logs over /runs/:id/logs/stream. The cursor
  * survives reconnects (?after=), so a dropped connection resumes cleanly.
  * Events are raw SDK message envelopes plus {type:'worker'} notes.
+ * Deliberately a lightweight custom renderer — hundreds of rows stream in,
+ * so no per-line syntax highlighting. The box stays a dark terminal in both
+ * themes, so its text colors are fixed, not tokens.
  */
 
 type Rendered = { key: string; stepIndex: number; attempt: number; node: React.ReactNode };
@@ -24,11 +27,11 @@ function renderEvent(row: LogRow): React.ReactNode | null {
 
   switch (e.type) {
     case 'worker':
-      return <div className="text-warn/80 italic">◈ {String(e.text ?? '')}</div>;
+      return <div className="italic text-[#fbbf24]">◈ {String(e.text ?? '')}</div>;
     case 'system':
       if (e.subtype === 'init' || e.model)
         return (
-          <div className="text-faint">
+          <div className="text-[#8a887f]">
             ▸ session init · model {String(e.model ?? '?')} · cwd {String(e.cwd ?? '?')}
           </div>
         );
@@ -40,15 +43,14 @@ function renderEvent(row: LogRow): React.ReactNode | null {
       content.forEach((c: Record<string, any>, i: number) => {
         if (c.type === 'text' && c.text?.trim()) {
           parts.push(
-            <div key={i} className="whitespace-pre-wrap text-ink">
+            <div key={i} className="whitespace-pre-wrap text-[#edece7]">
               {c.text}
             </div>,
           );
         } else if (c.type === 'tool_use') {
           parts.push(
-            <div key={i} className="text-accent">
-              ⚙ {String(c.name)}{' '}
-              <span className="text-faint">{previewInput(c.input)}</span>
+            <div key={i} className="text-[#e08d6d]">
+              ⚙ {String(c.name)} <span className="text-[#8a887f]">{previewInput(c.input)}</span>
             </div>,
           );
         }
@@ -72,14 +74,13 @@ function renderEvent(row: LogRow): React.ReactNode | null {
         .join('\n');
       const trimmed = text.length > 400 ? `${text.slice(0, 400)}…` : text;
       return trimmed.trim() ? (
-        <div className="whitespace-pre-wrap text-faint">↳ {trimmed}</div>
+        <div className="whitespace-pre-wrap text-[#8a887f]">↳ {trimmed}</div>
       ) : null;
     }
     case 'result':
       return (
-        <div className="text-ok">
-          ■ result · {String(e.subtype ?? '')} · $
-          {Number(e.total_cost_usd ?? 0).toFixed(4)}
+        <div className="text-[#34d399]">
+          ■ result · {String(e.subtype ?? '')} · ${Number(e.total_cost_usd ?? 0).toFixed(4)}
         </div>
       );
     default:
@@ -137,16 +138,16 @@ export function LogViewer({ runId }: { runId: string }): React.ReactNode {
         const el = boxRef.current;
         if (el) pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
       }}
-      className="h-[480px] overflow-y-auto rounded-md bg-black/40 p-3 font-mono text-xs leading-relaxed"
+      className="h-[520px] overflow-y-auto rounded-lg border border-border bg-[#1c1b18] p-3 font-mono text-xs leading-relaxed"
     >
-      {rows.length === 0 && <div className="text-faint">no log events yet…</div>}
+      {rows.length === 0 && <div className="text-[#8a887f]">no log events yet…</div>}
       {rows.map((row, i) => {
         const prev = rows[i - 1];
         const boundary = !prev || prev.stepIndex !== row.stepIndex || prev.attempt !== row.attempt;
         return (
           <div key={row.key}>
             {boundary && (
-              <div className="mt-2 mb-1 border-b border-border pb-0.5 font-semibold text-dim">
+              <div className="mt-2 mb-1 border-b border-white/10 pb-0.5 font-semibold text-[#a5a39b]">
                 — step {row.stepIndex + 1} · attempt {row.attempt} —
               </div>
             )}

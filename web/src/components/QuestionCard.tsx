@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { answerQuestion } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import type { QuestionRow } from '../lib/types';
+import { cn } from '@/lib/utils';
 
 /**
  * One pending/answered question. The answer box is the UI face of
@@ -29,37 +33,42 @@ export function QuestionCard({
 
   return (
     <div
-      className={`rounded-md border p-3 ${open ? 'border-warn/40 bg-warn/5' : 'border-border bg-panel-2'}`}
+      className={cn(
+        'rounded-xl border p-4',
+        open ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-card',
+      )}
     >
-      <div className="mb-1 flex items-center gap-2 text-xs text-dim">
-        {open ? <span className="text-warn">❓ waiting for you</span> : <span>✓ answered</span>}
-        <span>· {timeAgo(question.created_at)}</span>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+        {open ? (
+          <Badge className="border-amber-500/40 text-amber-700 dark:text-amber-300" variant="outline">
+            ❓ waiting for you
+          </Badge>
+        ) : (
+          <Badge variant="secondary">answered</Badge>
+        )}
+        <span>{timeAgo(question.created_at)}</span>
         {context}
       </div>
-      <pre className="font-sans mb-2 whitespace-pre-wrap text-sm">{question.body}</pre>
+      <pre className="mb-3 whitespace-pre-wrap font-sans text-sm">{question.body}</pre>
 
       {open ? (
         <div className="grid gap-2">
           {question.kind === 'multiple-choice' && question.choices && (
             <div className="flex flex-wrap gap-2">
               {question.choices.map((choice) => (
-                <button
+                <Button
                   key={choice}
                   onClick={() => setAnswer(choice)}
-                  className={`rounded-md border px-2 py-1 text-xs ${
-                    answer === choice
-                      ? 'border-accent bg-accent/15 text-accent'
-                      : 'border-border text-dim hover:border-accent'
-                  }`}
+                  size="sm"
+                  variant={answer === choice ? 'default' : 'outline'}
                 >
                   {choice}
-                </button>
+                </Button>
               ))}
             </div>
           )}
           <div className="flex gap-2">
-            <input
-              value={answer}
+            <Input
               onChange={(e) => setAnswer(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && answer.trim() && !submit.isPending) {
@@ -67,20 +76,21 @@ export function QuestionCard({
                 }
               }}
               placeholder="your answer (free text — qualifiers welcome)"
-              className="min-w-0 flex-1 rounded-md border border-border bg-panel px-3 py-1.5 text-sm outline-none focus:border-accent"
+              value={answer}
             />
-            <button
+            <Button
               disabled={!answer.trim() || submit.isPending}
               onClick={() => submit.mutate(answer.trim())}
-              className="rounded-md bg-accent-dim px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-40"
             >
               {submit.isPending ? 'sending…' : 'answer'}
-            </button>
+            </Button>
           </div>
-          {submit.isError && <div className="text-xs text-err">{String(submit.error)}</div>}
+          {submit.isError && <p className="text-destructive text-xs">{String(submit.error)}</p>}
         </div>
       ) : (
-        <div className="rounded bg-panel px-2 py-1.5 text-sm text-dim">↳ {question.answer}</div>
+        <div className="rounded-lg bg-muted px-3 py-2 text-muted-foreground text-sm">
+          ↳ {question.answer}
+        </div>
       )}
     </div>
   );

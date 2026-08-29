@@ -1,92 +1,166 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { createChat, getChatMessages, listChats, sendChatMessage } from '../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation';
+import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  type PromptInputMessage,
+} from '@/components/ai-elements/prompt-input';
+import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
+import { Tool, ToolContent, ToolHeader, ToolInput } from '@/components/ai-elements/tool';
+import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task';
+import { Shimmer } from '@/components/ai-elements/shimmer';
+import {
+  createChat,
+  getChatMessages,
+  listNotifications,
+  listRuns,
+  sendChatMessage,
+} from '../lib/api';
 import { timeAgo } from '../lib/format';
 import type { ChatTurnEvent } from '../lib/types';
-import { Empty, ErrorNote, PageHeader, Spinner } from '../components/ui';
 
 /**
- * Master chat: history from the DB mirror, live turns over the SSE POST
- * stream. The Master only acts through its factory tools — tool calls render
- * as chips in the thread.
+ * The Master chat — the console's home screen. History from the DB mirror,
+ * live turns over the SSE POST stream. "/" is a fresh conversation; the
+ * first send creates the chat row, exactly like starting a new claude.ai
+ * conversation.
  */
+
+const SUGGESTIONS = [
+  'What is running right now?',
+  'Any pending questions?',
+  'Process the board: dispatch every open, unblocked issue.',
+  'Summarize the last completed run.',
+];
 
 type LiveItem =
   | { kind: 'assistant'; text: string }
   | { kind: 'tool'; name: string; input: unknown }
   | { kind: 'error'; message: string };
 
-function ToolChip({ name, input }: { name: string; input: unknown }): React.ReactNode {
-  const [open, setOpen] = useState(false);
-  const preview = JSON.stringify(input) ?? '';
+function ToolCard({ name, input }: { name: string; input: unknown }): React.ReactNode {
   return (
-    <div className="my-1">
-      <button
-        onClick={() => setOpen(!open)}
-        className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 text-left font-mono text-xs text-accent hover:bg-accent/20"
-      >
-        ⚙ {name.replace(/^mcp__factory__/, '')}{' '}
-        {!open && <span className="text-accent/60">{preview.length > 80 ? `${preview.slice(0, 80)}…` : preview}</span>}
-      </button>
-      {open && (
-        <pre className="mt-1 overflow-x-auto rounded-md bg-black/40 p-2 font-mono text-xs text-dim">
-          {JSON.stringify(input, null, 2)}
-        </pre>
-      )}
-    </div>
+    <Tool>
+      <ToolHeader
+        state="output-available"
+        toolName={name.replace(/^mcp__factory__/, '')}
+        type="dynamic-tool"
+      />
+      <ToolContent>
+        <ToolInput input={input} />
+      </ToolContent>
+    </Tool>
   );
 }
 
-function Bubble({ role, content }: { role: string; content: string }): React.ReactNode {
-  if (role === 'user') {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg bg-accent-dim/40 px-3 py-2 text-sm whitespace-pre-wrap">
-          {content}
+function statusDot(status: string): string {
+  if (status === 'running') return 'bg-blue-500';
+  if (status === 'waiting-human') return 'bg-amber-500';
+  if (status === 'completed') return 'bg-emerald-500';
+  if (status === 'failed') return 'bg-red-500';
+  return 'bg-neutral-400';
+}
+
+function ActivityRail(): React.ReactNode {
+  const runs = useQuery({
+    queryKey: ['runs', { activeOnly: true }],
+    queryFn: () => listRuns({ active: true, limit: 20 }),
+  });
+  const notifications = useQuery({
+    queryKey: ['notifications', 'rail'],
+    queryFn: () => listNotifications({ limit: 6 }),
+  });
+
+  return (
+    <aside className="hidden w-80 shrink-0 flex-col gap-5 overflow-y-auto border-border border-l p-4 2xl:flex">
+      <div>
+        <h3 className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Active runs
+        </h3>
+        {runs.data?.length === 0 && (
+          <p className="text-muted-foreground text-sm">factory floor is quiet</p>
+        )}
+        <div className="space-y-2">
+          {runs.data?.map((run) => (
+            <Task defaultOpen key={run.id}>
+              <TaskTrigger
+                title={`${run.pipeline}${run.issueNumber !== null ? ` · #${run.issueNumber}` : ''}`}
+              />
+              <TaskContent>
+                <TaskItem>
+                  <span className={`inline-block size-2 rounded-full ${statusDot(run.status)}`} />{' '}
+                  {run.status} · step {run.currentStep}
+                </TaskItem>
+                {run.pendingQuestion && (
+                  <TaskItem className="text-amber-600 dark:text-amber-400">
+                    ❓ {run.pendingQuestion}
+                  </TaskItem>
+                )}
+                <TaskItem>
+                  <Link className="text-primary hover:underline" to={`/runs/${run.id}`}>
+                    open run →
+                  </Link>
+                </TaskItem>
+              </TaskContent>
+            </Task>
+          ))}
         </div>
       </div>
-    );
-  }
-  if (role === 'tool') {
-    let parsed: { name?: string; input?: unknown } = {};
-    try {
-      parsed = JSON.parse(content) as { name?: string; input?: unknown };
-    } catch {
-      return <div className="font-mono text-xs text-dim">{content}</div>;
-    }
-    return <ToolChip name={parsed.name ?? 'tool'} input={parsed.input} />;
-  }
-  if (role === 'system') {
-    return <div className="rounded-md bg-err/10 px-3 py-2 text-xs text-err">{content}</div>;
-  }
-  return (
-    <div className="max-w-[90%] rounded-lg bg-panel-2 px-3 py-2 text-sm whitespace-pre-wrap">
-      {content}
-    </div>
+
+      <div>
+        <h3 className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Latest activity
+        </h3>
+        <div className="space-y-2">
+          {notifications.data?.map((n) => (
+            <div className="rounded-lg border border-border bg-card p-2.5 text-xs" key={n.id}>
+              <p className="line-clamp-2">{n.summary}</p>
+              <p className="mt-1 text-muted-foreground">
+                {n.event} · {timeAgo(n.created_at)}
+                {n.pipeline_run_id && (
+                  <>
+                    {' · '}
+                    <Link className="text-primary hover:underline" to={`/runs/${n.pipeline_run_id}`}>
+                      run
+                    </Link>
+                  </>
+                )}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
   );
 }
 
-function Thread({ chatId }: { chatId: string }): React.ReactNode {
+export default function ChatPage(): React.ReactNode {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+
   const history = useQuery({
-    queryKey: ['chat', chatId],
-    queryFn: () => getChatMessages(chatId),
+    queryKey: ['chat', id],
+    queryFn: () => getChatMessages(id!),
+    enabled: !!id,
   });
+
   const [live, setLive] = useState<LiveItem[]>([]);
-  const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
   const [pendingUser, setPendingUser] = useState<string | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const [streaming, setStreaming] = useState(false);
 
-  useEffect(() => {
-    boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
-  }, [history.data, live, pendingUser]);
-
-  const send = async (): Promise<void> => {
-    const message = input.trim();
-    if (!message || streaming) return;
-    setInput('');
+  const runTurn = async (chatId: string, message: string): Promise<void> => {
     setPendingUser(message);
     setLive([]);
     setStreaming(true);
@@ -113,119 +187,153 @@ function Thread({ chatId }: { chatId: string }): React.ReactNode {
     }
   };
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={boxRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {history.isLoading && <Spinner />}
-        {history.isError && <ErrorNote error={history.error} />}
-        {history.data?.length === 0 && !pendingUser && (
-          <Empty>
-            Ask the Master anything — status, dispatching runs, answering questions. It re-reads the
-            factory state every turn.
-          </Empty>
-        )}
-        {history.data?.map((m) => (
-          <Bubble key={m.id} role={m.role} content={m.content} />
-        ))}
-        {pendingUser && <Bubble role="user" content={pendingUser} />}
-        {live.map((item, i) =>
-          item.kind === 'assistant' ? (
-            <Bubble key={i} role="assistant" content={item.text} />
-          ) : item.kind === 'tool' ? (
-            <ToolChip key={i} name={item.name} input={item.input} />
-          ) : (
-            <Bubble key={i} role="system" content={item.message} />
-          ),
-        )}
-        {streaming && (
-          <div className="flex items-center gap-2 text-xs text-dim">
-            <Spinner /> Master is working…
-          </div>
-        )}
-      </div>
+  const send = async (text: string): Promise<void> => {
+    const message = text.trim();
+    if (!message || streaming) return;
+    if (id) {
+      await runTurn(id, message);
+    } else {
+      // First message of a fresh conversation: create, navigate, then run.
+      const { chatId } = await createChat();
+      void queryClient.invalidateQueries({ queryKey: ['chats'] });
+      navigate(`/chat/${chatId}`, { replace: true, state: { initial: message } });
+    }
+  };
 
-      <div className="border-t border-border p-3">
-        <div className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            rows={2}
-            placeholder={streaming ? 'waiting for the Master…' : 'message the Master (Enter to send)'}
-            disabled={streaming}
-            className="min-w-0 flex-1 resize-none rounded-md border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
-          />
-          <button
-            onClick={() => void send()}
-            disabled={!input.trim() || streaming}
-            className="self-end rounded-md bg-accent-dim px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-40"
-          >
-            send
-          </button>
+  // Auto-send the message a fresh "/" conversation was started with.
+  const initialSent = useRef(false);
+  useEffect(() => {
+    const initial = (location.state as { initial?: string } | null)?.initial;
+    if (id && initial && !initialSent.current) {
+      initialSent.current = true;
+      window.history.replaceState({}, '');
+      void runTurn(id, initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const historyNodes = useMemo(
+    () =>
+      history.data?.map((m) => {
+        if (m.role === 'user') {
+          return (
+            <Message from="user" key={m.id}>
+              <MessageContent>{m.content}</MessageContent>
+            </Message>
+          );
+        }
+        if (m.role === 'assistant') {
+          return (
+            <Message from="assistant" key={m.id}>
+              <MessageContent>
+                <MessageResponse>{m.content}</MessageResponse>
+              </MessageContent>
+            </Message>
+          );
+        }
+        if (m.role === 'tool') {
+          try {
+            const parsed = JSON.parse(m.content) as { name?: string; input?: unknown };
+            return <ToolCard input={parsed.input} key={m.id} name={parsed.name ?? 'tool'} />;
+          } catch {
+            return null;
+          }
+        }
+        return (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-destructive text-xs" key={m.id}>
+            {m.content}
+          </p>
+        );
+      }),
+    [history.data],
+  );
+
+  const isEmpty =
+    (history.data?.length ?? 0) === 0 && !pendingUser && live.length === 0 && !streaming;
+
+  const composer = (
+    <PromptInput onSubmit={(m: PromptInputMessage) => void send(m.text)}>
+      <PromptInputBody>
+        <PromptInputTextarea
+          disabled={streaming}
+          placeholder={streaming ? 'the Master is working…' : 'Message the Master'}
+        />
+      </PromptInputBody>
+      <PromptInputFooter className="justify-end">
+        <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+      </PromptInputFooter>
+    </PromptInput>
+  );
+
+  // Fresh conversation: claude.ai-style centered greeting + composer.
+  if (isEmpty) {
+    return (
+      <div className="flex h-full">
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-6">
+          <div className="w-full max-w-2xl">
+            <h1 className="font-display mb-2 text-center text-3xl">
+              <span className="mr-2">🏭</span>
+              What should the factory build?
+            </h1>
+            <p className="mb-8 text-center text-muted-foreground text-sm">
+              The Master re-reads the board, runs, and pipelines every turn — ask for status or
+              hand it work.
+            </p>
+            {composer}
+            <Suggestions className="mt-3 justify-center">
+              {SUGGESTIONS.map((s) => (
+                <Suggestion key={s} onClick={(text) => void send(text)} suggestion={s} />
+              ))}
+            </Suggestions>
+          </div>
+        </div>
+        <ActivityRail />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Conversation className="min-h-0 flex-1">
+          <ConversationContent className="mx-auto w-full max-w-3xl pt-8">
+            {historyNodes}
+            {pendingUser && (
+              <Message from="user">
+                <MessageContent>{pendingUser}</MessageContent>
+              </Message>
+            )}
+            {live.map((item, i) =>
+              item.kind === 'assistant' ? (
+                <Message from="assistant" key={i}>
+                  <MessageContent>
+                    <MessageResponse>{item.text}</MessageResponse>
+                  </MessageContent>
+                </Message>
+              ) : item.kind === 'tool' ? (
+                <ToolCard input={item.input} key={i} name={item.name} />
+              ) : (
+                <p
+                  className="rounded-lg bg-destructive/10 px-3 py-2 text-destructive text-xs"
+                  key={i}
+                >
+                  {item.message}
+                </p>
+              ),
+            )}
+            {streaming && <Shimmer className="text-sm">Master is working…</Shimmer>}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
+
+        <div className="mx-auto w-full max-w-3xl px-4 pb-5">
+          {composer}
+          <p className="mt-2 text-center text-muted-foreground text-xs">
+            The Master only acts through factory tools — every action it takes is auditable above.
+          </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-export default function ChatPage(): React.ReactNode {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const chats = useQuery({ queryKey: ['chats'], queryFn: listChats });
-  const newChat = useMutation({
-    mutationFn: createChat,
-    onSuccess: (res) => navigate(`/chat/${res.chatId}`),
-  });
-
-  // No chat selected: jump to the most recent, or show the empty state.
-  useEffect(() => {
-    if (!id && chats.data && chats.data.length > 0) {
-      navigate(`/chat/${chats.data[0]!.id}`, { replace: true });
-    }
-  }, [id, chats.data, navigate]);
-
-  return (
-    <div className="flex h-full flex-col">
-      <PageHeader title="Master Chat">
-        <button
-          onClick={() => newChat.mutate()}
-          disabled={newChat.isPending}
-          className="rounded-md bg-accent-dim px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-40"
-        >
-          + new chat
-        </button>
-      </PageHeader>
-
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-56 shrink-0 overflow-y-auto border-r border-border">
-          {chats.data?.map((c) => (
-            <Link
-              key={c.id}
-              to={`/chat/${c.id}`}
-              className={`block border-b border-border/50 px-3 py-2.5 text-sm hover:bg-panel ${
-                c.id === id ? 'bg-panel font-medium' : 'text-dim'
-              }`}
-            >
-              <div className="truncate">{c.title ?? 'untitled chat'}</div>
-              <div className="text-xs text-faint">{timeAgo(c.last_message_at)}</div>
-            </Link>
-          ))}
-          {chats.data?.length === 0 && (
-            <div className="p-3 text-xs text-dim">no chats yet</div>
-          )}
-        </aside>
-
-        {id ? (
-          <Thread key={id} chatId={id} />
-        ) : (
-          <Empty>create a chat to talk to the Master</Empty>
-        )}
-      </div>
+      <ActivityRail />
     </div>
   );
 }

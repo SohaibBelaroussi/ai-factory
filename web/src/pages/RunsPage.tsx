@@ -1,6 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { listRuns } from '../lib/api';
 import { cost, duration, shortId, timeAgo } from '../lib/format';
 import { DispatchDialog } from '../components/DispatchDialog';
@@ -17,24 +27,17 @@ export default function RunsPage(): React.ReactNode {
   return (
     <div>
       <PageHeader title="Runs">
-        <label className="flex items-center gap-1.5 text-xs text-dim">
-          <input
-            type="checkbox"
-            checked={activeOnly}
-            onChange={(e) => setActiveOnly(e.target.checked)}
-          />
+        <label className="mr-2 flex items-center gap-2 text-muted-foreground text-sm">
+          <Switch checked={activeOnly} onCheckedChange={setActiveOnly} />
           active only
         </label>
-        <button
-          onClick={() => setDialog(true)}
-          className="rounded-md bg-accent-dim px-3 py-1.5 text-sm font-medium hover:bg-accent"
-        >
+        <Button onClick={() => setDialog(true)} size="sm">
           + dispatch
-        </button>
+        </Button>
       </PageHeader>
 
       {runs.isLoading && (
-        <div className="p-6">
+        <div className="p-8">
           <Spinner />
         </div>
       )}
@@ -42,60 +45,68 @@ export default function RunsPage(): React.ReactNode {
       {runs.data?.length === 0 && <Empty>no runs {activeOnly ? 'active' : 'yet'}</Empty>}
 
       {runs.data && runs.data.length > 0 && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-dim">
-              <th className="px-4 py-2 font-medium">run</th>
-              <th className="px-4 py-2 font-medium">status</th>
-              <th className="px-4 py-2 font-medium">pipeline</th>
-              <th className="px-4 py-2 font-medium">issue</th>
-              <th className="px-4 py-2 font-medium">step</th>
-              <th className="px-4 py-2 font-medium">latest</th>
-              <th className="px-4 py-2 font-medium">started</th>
-              <th className="px-4 py-2 font-medium">took</th>
-              <th className="px-4 py-2 font-medium">cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.data.map((run) => (
-              <tr key={run.id} className="border-b border-border/50 hover:bg-panel">
-                <td className="px-4 py-2.5">
-                  <Link to={`/runs/${run.id}`} className="font-mono text-accent hover:underline">
-                    {shortId(run.id)}
-                  </Link>
-                </td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={run.status} />
-                </td>
-                <td className="px-4 py-2.5">{run.pipeline}</td>
-                <td className="px-4 py-2.5">
-                  {run.issueNumber !== null ? (
-                    <Link to={`/issues/${run.issueNumber}`} className="text-accent hover:underline">
-                      #{run.issueNumber}
-                    </Link>
-                  ) : (
-                    <span className="text-faint">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-dim">{run.currentStep}</td>
-                <td className="max-w-64 truncate px-4 py-2.5 text-dim">
-                  {run.pendingQuestion ? (
-                    <span className="text-warn" title={run.pendingQuestion}>
-                      ❓ {run.pendingQuestion}
-                    </span>
-                  ) : (
-                    <span title={run.lastVerdictSummary ?? ''}>{run.lastVerdictSummary ?? '—'}</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap text-dim">{timeAgo(run.startedAt)}</td>
-                <td className="px-4 py-2.5 whitespace-nowrap text-dim">
-                  {duration(run.startedAt, run.endedAt)}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap text-dim">{cost(run.costUsd)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-8 pt-4">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>run</TableHead>
+                  <TableHead>status</TableHead>
+                  <TableHead>pipeline</TableHead>
+                  <TableHead>issue</TableHead>
+                  <TableHead>step</TableHead>
+                  <TableHead>latest</TableHead>
+                  <TableHead>started</TableHead>
+                  <TableHead>took</TableHead>
+                  <TableHead className="text-right">cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {runs.data.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell>
+                      <Link className="font-mono text-primary hover:underline" to={`/runs/${run.id}`}>
+                        {shortId(run.id)}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={run.status} />
+                    </TableCell>
+                    <TableCell>{run.pipeline}</TableCell>
+                    <TableCell>
+                      {run.issueNumber !== null ? (
+                        <Link className="text-primary hover:underline" to={`/issues/${run.issueNumber}`}>
+                          #{run.issueNumber}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{run.currentStep}</TableCell>
+                    <TableCell className="max-w-72 truncate text-muted-foreground">
+                      {run.pendingQuestion ? (
+                        <span className="text-amber-700 dark:text-amber-400" title={run.pendingQuestion}>
+                          ❓ {run.pendingQuestion}
+                        </span>
+                      ) : (
+                        <span title={run.lastVerdictSummary ?? ''}>{run.lastVerdictSummary ?? '—'}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {timeAgo(run.startedAt)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {duration(run.startedAt, run.endedAt)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right text-muted-foreground">
+                      {cost(run.costUsd)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
       )}
 
       {dialog && <DispatchDialog onClose={() => setDialog(false)} />}
