@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -6,6 +7,9 @@ import tailwindcss from '@tailwindcss/vite';
 // this dev proxy (local) both strip it. Keeps CORS out of the picture entirely.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
   server: {
     port: 5173,
     proxy: {

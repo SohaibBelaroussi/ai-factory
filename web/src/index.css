@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 /*
  * Dark ops-console theme. Single deliberate look (no light variant) —
- * the factory floor is a control room.
+ * the factory floor is a control room. Two token layers:
+ *  1. Factory tokens (v1 screens): bg / panel / ink / dim / accent / …
+ *  2. shadcn tokens (v2 screens + AI Elements): background / foreground / …
+ *     — values tuned to the same palette so both generations match.
  */
 @theme {
   --color-bg: #0b0e14;
@@ -20,6 +25,55 @@
 
   --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+:root,
+.dark {
+  --background: #0b0e14;
+  --foreground: #d7dde8;
+  --card: #11151d;
+  --card-foreground: #d7dde8;
+  --popover: #171d28;
+  --popover-foreground: #d7dde8;
+  --primary: #4f9cf9;
+  --primary-foreground: #0b0e14;
+  --secondary: #171d28;
+  --secondary-foreground: #d7dde8;
+  --muted: #171d28;
+  --muted-foreground: #8b94a7;
+  --accent: #171d28;
+  --accent-foreground: #d7dde8;
+  --destructive: #f87171;
+  --destructive-foreground: #0b0e14;
+  --border: #222a37;
+  --input: #222a37;
+  --ring: #4f9cf9;
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-ui: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 html,

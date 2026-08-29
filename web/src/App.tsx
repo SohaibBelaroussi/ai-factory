@@ -4,8 +4,13 @@ import BoardPage from './pages/BoardPage';
 import RunsPage from './pages/RunsPage';
 import RunDetailPage from './pages/RunDetailPage';
 import ChatPage from './pages/ChatPage';
+import { lazy, Suspense } from 'react';
 import IssueDetailPage from './pages/IssueDetailPage';
 import PipelinesPage from './pages/PipelinesPage';
+
+// v2 pulls in the AI Elements stack (streamdown/shiki/mermaid) — keep it out
+// of the v1 bundle.
+const ChatV2Page = lazy(() => import('./pages/v2/ChatV2Page'));
 import PipelineEditorPage from './pages/PipelineEditorPage';
 import QuestionsPage from './pages/QuestionsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -33,7 +38,7 @@ function BusDot(): React.ReactNode {
   );
 }
 
-export default function App(): React.ReactNode {
+function V1Shell(): React.ReactNode {
   return (
     <div className="flex h-full">
       <aside className="flex w-48 shrink-0 flex-col border-r border-border bg-panel">
@@ -58,6 +63,14 @@ export default function App(): React.ReactNode {
             </NavLink>
           ))}
         </nav>
+        <div className="px-2 pt-2">
+          <NavLink
+            to="/v2"
+            className="block rounded-md border border-dashed border-accent/40 px-3 py-2 text-sm text-accent hover:bg-accent/10"
+          >
+            ✨ Chat v2 preview
+          </NavLink>
+        </div>
         <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-3">
           <BusDot />
           <NotificationBell />
@@ -81,5 +94,17 @@ export default function App(): React.ReactNode {
         </Routes>
       </main>
     </div>
+  );
+}
+
+export default function App(): React.ReactNode {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-dim">loading…</div>}>
+      <Routes>
+        <Route path="/v2" element={<ChatV2Page />} />
+        <Route path="/v2/chat/:id" element={<ChatV2Page />} />
+        <Route path="*" element={<V1Shell />} />
+      </Routes>
+    </Suspense>
   );
 }
