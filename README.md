@@ -1,162 +1,149 @@
-# AI Factory
+# 🏭 AI Factory
 
-A GitHub-native AI software factory. GitHub issues are the unit of work; a Master
-agent dispatches **pipelines** — user-defined sequences of steps, each a full
-agentic Claude Agent SDK session in an ephemeral Docker worker. Spec and locked
-architecture live in [`spec files/`](spec%20files/) — build exactly that system.
+**A self-hosted software factory: GitHub issues go in, reviewed pull requests come out.**
 
-Every action is an API call; the web UI at :8080 renders exactly the public
-API, so anything done in the UI is reproducible with curl.
+You talk to a **Master agent** in a chat console (or click a card on a kanban board). It dispatches
+**pipelines** — sequences of steps you define as plain data — and each step runs as a full
+[Claude Agent SDK](https://docs.anthropic.com/en/docs/agents/claude-agent-sdk) session inside an
+ephemeral Docker container: it clones your repo, plans, writes code, commits, and hands off to the
+next step (like an independent review with fresh eyes). The factory opens the PR. **You merge it.**
 
-## Layout
+![Master chat](docs/media/chat-home.png)
 
-| Path | What |
-|---|---|
-| `docker-compose.yml` | `pg` + `inngest` (self-hosted) + `backend` + `web` on the `factory` network; `worker` build-only profile |
-| `backend/` | API (public + internal planes), migrations, Inngest runner functions, Master service, provisioner |
-| `worker/` | Ephemeral step-worker image (Claude Agent SDK + pinned CLI, canonical cwd `/work`) |
-| `web/` | Frontend SPA (Vite/React, nginx serving + `/api` proxy) — port :8080 |
-| `scripts/` | Operator scripts (worker AUTH_OK test) |
+## Why it's different
 
-## Quickstart
+- **You stay in control.** Humans merge every PR. Pipelines can pause mid-run and ask you a
+  question (approve a plan, pick an option) — while paused, there are **zero** containers running
+  and zero spend.
+- **Pipelines are data, not code.** A pipeline is just steps: a behavior prompt, a model, a tool
+  allowlist, an optional output artifact, retry and timeout budgets. Create one in the UI and the
+  Master discovers it by its description — no engine changes, no redeploys.
+- **Judgment lives in LLMs, bookkeeping lives in code.** Every step's output is contract-checked
+  by code (verdict schema + the declared artifact must exist on the branch). Dependency checks,
+  dedupe, idempotency, and refusals are computed — never vibes.
+- **Everything is auditable and reproducible.** The UI renders exactly the public API, so anything
+  you click can be replayed with `curl`. Every agent session streams its full log live.
 
-```bash
-docker compose up -d --build
+## How it works
+
+```
+GitHub issue ──▶ Master chat / board / webhook / cron
+                        │  dispatch (refused if blocked, closed, or already running)
+                        ▼
+                 pipeline run on branch issue-N
+                 step 1 ▸ ephemeral worker: clone → plan → implement → commit → verdict
+                 step 2 ▸ fresh worker, fresh eyes: review the diff → done | reject (retry w/ feedback)
+                        │
+                        ▼
+                 pull request (⟵ the only thing that survives a worker: commits, artifacts, logs, events)
+                 you merge ✓ → board flips to completed → dependent issues unblock
 ```
 
-Then check readiness (no auth required on `/health`):
+| Concept | What it is |
+|---|---|
+| **Master** | The chat agent on the home screen. Reads the factory's state fresh every turn; acts only through factory tools (dispatch, answer, cancel — never writes code itself). |
+| **Pipeline** | An ordered list of steps stored as data. Ships with `implement` (plan+build → review) and `implement-gated` (same, but pauses for your plan approval). |
+| **Run** | One pipeline execution against one issue/brief, on its own `issue-N` branch. Snapshots its pipeline definition at dispatch. |
+| **Verdict** | Every step ends with structured output: `done` / `reject` / `failed` + a one-line summary that feeds the board, notifications, and retries. |
+| **Questions** | A step granted `ask_human` can pause the run and wait (up to 30 days) for your answer — from the run page, the Inbox, or chat. |
+| **Board** | Your GitHub issues projected into columns (backlog / blocked / in progress / needs review / completed), updated live. Declare dependencies with `Blocked-by: #N` in an issue body. |
+
+![Board](docs/media/board.png)
+
+## Getting started
+
+**You need:** Docker (Desktop or Engine), a Claude subscription (Pro/Max), and a GitHub repo you
+want the factory to work on plus a PAT that can push to it.
+
+```bash
+git clone https://github.com/SohaibBelaroussi/ai-factory.git && cd ai-factory
+docker compose up -d --build
+docker compose --profile tools build   # the worker image steps run in
+```
+
+Open **http://localhost:8080**, go to **Settings**, and set three values:
+
+1. **claude-oauth-token** — run `claude setup-token` on your machine and paste the result.
+2. **github-token** — a PAT that can read/write the target repo (a fine-grained token scoped to
+   that one repo is recommended).
+3. **github-repo** — `owner/name`.
+
+The Settings page shows six health checks. The factory **refuses to dispatch anything** until all
+of them are green — so if it's green, it works. Secrets live in the factory's database, never in
+files; rotating a token is just pasting a new value.
+
+<details>
+<summary>Prefer the terminal? Everything is an API call.</summary>
 
 ```bash
 curl -s http://localhost:3000/health
+curl -s -X PUT http://localhost:3000/settings/claude-token -H "content-type: application/json" -d '{"value":"<from `claude setup-token`>"}'
+curl -s -X PUT http://localhost:3000/settings/github-token -H "content-type: application/json" -d '{"value":"<PAT>"}'
+curl -s -X PUT http://localhost:3000/settings/github-repo  -H "content-type: application/json" -d '{"value":"owner/name"}'
 ```
 
-`ready` stays `false` — and the factory **refuses dispatch** — until every check
-is green. Set the operator secrets:
-
-```bash
-curl -s -X PUT http://localhost:3000/settings/claude-token -H "content-type: application/json" -d '{"value":"<CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`>"}'
-```
-
-```bash
-curl -s -X PUT http://localhost:3000/settings/github-token -H "content-type: application/json" -d '{"value":"<GitHub PAT with repo scope>"}'
-```
-
-```bash
-curl -s -X PUT http://localhost:3000/settings/github-repo -H "content-type: application/json" -d '{"value":"owner/name"}'
-```
-
-Token rotation = re-PUT the setting. No restart.
-
-Health checks reported: `postgres`, `inngest`, `claudeToken` (presence — real
-validation is the worker auth test below), `githubToken` (validated live against
-the GitHub API), `githubRepo`, `docker` (daemon socket, needed by the provisioner).
-
-The Inngest dashboard is at http://localhost:8288.
-
-### Worker AUTH_OK test (substrate validation gate)
-
-Builds nothing new; runs one trivial turn inside the worker image against your
-subscription OAuth token:
+Optional substrate check — runs one real turn inside the worker image against your token
+(`AUTH_OK` + a nonzero cost = the plumbing works):
 
 ```bash
 CLAUDE_CODE_OAUTH_TOKEN=<token> ./scripts/worker-auth-test.sh
 ```
 
 (Windows: `.\scripts\worker-auth-test.ps1 -Token <token>`.)
+</details>
 
-Exit 0 prints `AUTH_OK` with a nonzero cost. Exit 2 = auth failure — note this
-is detected **in-band** (the CLI reports "Not logged in" as a *successful* $0
-result), which is exactly how the factory routes worker auth failures to a
-factory-health notification instead of a step retry.
+## Your first run
 
-### Operator auth
+Type into the chat:
 
-Set `OPERATOR_TOKEN` in `.env` to require `Authorization: Bearer <token>` on the
-public plane (everything except `/health`, `/api/inngest`, `/hooks/*`,
-`/internal/*` — those have their own auth). Empty = no auth, local dev only.
+> *Process the board: dispatch every open, unblocked issue.*
 
-## Build phases
+The Master reads the board, checks each issue's dependencies and state, dispatches what's ready,
+and tells you exactly what it refused and why (`blocked by #12`, `already running`, `issue closed`)
+— refusals are structured data, not error strings. Or skip the chat entirely: hover an issue card
+on the **Board** and hit **run**, pick a pipeline, go.
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Skeleton: compose, migrations, settings + health, worker image + AUTH_OK test | **done** (real-token gate pending operator credentials) |
-| 1 | Runner core: Inngest `runPipeline`, provisioner, step workers, contract validation, `retryWithFeedback` | **done** — all gates passed live 2026-08-28 (real E2E run with PR, forced reject×2 then fail, fresh re-clone, worker self-timeout + runner timeout backstop, artifact contract, streaming logs) |
-| 2 | Master agent: SDK sessions, in-process MCP tools, chat mirror, IssueCache sync | **done** — all gates passed live 2026-08-28 (chat dispatch, blocked + already_running structured refusals, fresh-chat status, mirror-only history) |
-| 3 | Human-in-the-loop: `ask_human` suspend/resume, `implement-gated` | **done** — all gates passed live 2026-08-28 (suspend with zero containers, resume same session id from both answer doors, agent references the answer, cap exceeded → tool error → step proceeds) |
-| 4 | Triggers, notifications, `/events` SSE, idempotency | **done** — all gates passed live 2026-08-28 (signed webhook spawns scoped run, bad secret 401, replayed delivery never double-spawns, cron fired exactly once per bucket, one notification per completion, all four event types + live log tail on SSE) |
-| 5 | Frontend (`web` service) | complete — done-when gate passed live |
+While a run is live you can watch the agent work — every tool call and result streams into the
+run page. When it finishes you get one notification with the PR link. **Merge the PR on GitHub**;
+the board flips to completed on the next sync and anything that was `Blocked-by` that issue
+becomes dispatchable.
 
-**→ Backend E2E milestone reached**: the full operator story (spec §13) is
-executable end-to-end with curl only — settings, health, pipeline CRUD, chat
-dispatch, gated runs with suspend/resume answers, cancels, artifacts,
-notifications, webhooks, schedules, and live events all ran over the API in
-this validation round.
+**Want a gate?** Dispatch with `implement-gated` and the run pauses after planning: the plan lands
+in your Inbox as a question, the containers shut down, and nothing happens until you answer.
+Qualified answers work — *"approved, but skip the emoji"* — the agent resumes the same session
+with your words in front of it.
 
-## Operator runbook: conflicted PR (v1 policy, spec §12.1)
+## Day-2 notes
 
-Parallel runs on overlapping **lines** produce a conflicted PR after the first
-one merges — the factory does not detect this in v1 (dependencies are the
-intended serialization tool). Validated recovery:
+- **Parallel runs** on different files/hunks merge cleanly. Two runs editing the **same lines**
+  produce a conflicted second PR — the v1 policy is: close it, delete its branch, re-dispatch
+  (the fresh run branches off the new main). Use `Blocked-by:` to serialize work that must overlap.
+- **Triggers**: `POST /triggers` gives you an HMAC-signed webhook endpoint (point a GitHub webhook
+  at `/hooks/:id` for instant issue sync / auto-dispatch) or a cron schedule. Replayed deliveries
+  never double-spawn.
+- **Auth**: set `OPERATOR_TOKEN` in `.env` to require a bearer token on the whole public API; the
+  UI sends it from Settings → Operator token. Empty = local dev only.
+- **Worker security**: agent sessions run with a per-step tool allowlist and a stripped
+  environment (no internal tokens, no bypass modes). The GitHub token workers push with has
+  whatever scope your PAT has — scope it to the one target repo.
+- **Going to production**: the VM checklist (operator token, real Inngest keys, volume backups,
+  webhook, fine-grained PAT) is in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) §14.
 
-1. Close the conflicted PR (do not merge).
-2. Delete its `issue-N` branch.
-3. Re-dispatch the issue (optionally noting what changed on main in the brief).
-   The fresh run branches from the new main and produces a clean PR.
+## Repo layout
 
-Same-file edits in **different hunks** (e.g. one run editing `<head>`, another
-the nav) auto-merge fine — only same-line overlap needs the runbook. Cancelled
-runs release the issue back to `backlog` on the next sync.
+| Path | What |
+|---|---|
+| `docker-compose.yml` | `pg` + `inngest` (self-hosted, durable runner) + `backend` + `web`; `worker` build-only profile |
+| `backend/` | Public + internal API, migrations, Inngest runner functions, Master service, container provisioner |
+| `worker/` | The ephemeral step-worker image (Claude Agent SDK + pinned CLI) |
+| `web/` | The console — React SPA (shadcn/ui + AI SDK Elements), served by nginx on **:8080** |
+| `docs/IMPLEMENTATION.md` | The deep record: architecture, full API surface, internals, verification log, gotchas |
+| `spec files/` | The product spec and locked architecture the system was built from |
 
-## Design notes (implementation choices within the spec)
+Ports: web **:8080** · API **:3000** · Inngest dashboard **:8288**.
 
-- **Steps are stored as a jsonb array** on `pipeline_definitions` — pipelines
-  are data, read whole, never queried per-step.
-- **Runs snapshot their definition** (`pipeline_runs.definition_snapshot`) at
-  spawn, so editing a pipeline never changes an in-flight run.
-- `created_by` includes `api` (curl/CLI is a first-class door, per the API doc).
-- Notification events include `factory-health` for substrate problems (worker
-  auth failure), per the expanded architecture.
-- `step_logs` inserts fire `pg_notify('step_logs', …)` for the live viewer.
-- Inngest is pinned to the **v3 LTS** SDK line; the self-hosted server syncs
-  the backend's functions at `http://backend:3000/api/inngest`.
-- The runner waits on `step.finished` only in Phase 1; Phase 3 adds the race
-  with `step.waiting_human` (workers currently never emit it).
-- Worker sessions run with `permissionMode: 'dontAsk'` + the step's
-  `allowedTools` — default deny, no bypassPermissions anywhere. The agent's
-  tool env is stripped to HOME/PATH/CLAUDE_CODE_OAUTH_TOKEN (git push auth is
-  embedded in the remote URL, the internal token never enters the session).
-- Step verdicts ride the SDK's `outputFormat: json_schema` structured output,
-  with a \`\`\`verdict fence parse as fallback; the runner still checks the
-  declared artifact exists on the branch.
-- **Issue dependencies**: declare blockers in the issue body with a line like
-  `Blocked-by: #1, #2`. Satisfaction is computed in code (a blocker counts as
-  satisfied when its issue is completed/closed); the Master and `POST /runs`
-  refuse to dispatch blocked issues unless `force` is set.
-- **ask_human / suspend-resume**: the worker emits ONE `step.finished` event
-  per exit; the catalog's `step.waiting_human` signal rides in it as
-  `outcome: "waiting_human"` (one event name keeps the runner's durable waits
-  strictly linear and replay-deterministic). Session JSONL travels through the
-  internal API to the backend-owned session store — workers never mount
-  volumes, preserving the run-workers-elsewhere seam. Answers come through one
-  command (`POST /questions/:id/answer` ≡ the Master's `answer_question`).
-- **Artifact hygiene**: merged PRs carry `pipeline/` artifacts into the
-  default branch, so `prepareRun` clears inherited artifacts at run start —
-  a stale file must never satisfy a new run's output contract.
-- **Triggers**: `POST /triggers {name, pipeline, mapping, schedule?}` returns
-  the HMAC secret exactly once. Webhooks: `POST /hooks/:id` signed
-  GitHub-style (`X-Hub-Signature-256: sha256=<hmac of raw body>`), delivery id
-  from `X-GitHub-Delivery` (falls back to a body hash); mapping pulls
-  `issueNumberPath` / `briefTemplate` (`{dot.path}` placeholders) /
-  `filterPath+filterEquals` from the payload — only mapped fields ever enter a
-  prompt. Schedules: cron expressions evaluated by a once-a-minute Inngest
-  tick; the minute bucket is the idempotency key.
-- **/events**: one SSE stream (`run.updated`, `question.created`,
-  `notification.created`, `board.updated`) backed by Postgres LISTEN/NOTIFY;
-  events carry ids, clients re-fetch. `GET /runs/:id/logs/stream` tails
-  step_logs live the same way.
-- **Master chat**: `POST /chats` → `POST /chats/:id/messages {"message": "…"}`
-  streams the turn as SSE (`assistant`, `tool.use`, `done`, `error` events).
-  History (`GET /chats/:id/messages`) renders purely from the DB mirror.
-  Master sessions live under the session-store volume (`/data/sessions`) so
-  conversations survive backend restarts; built-in tools are stripped — the
-  Master acts only through the factory MCP tools.
+---
+
+Built end-to-end by [Claude Code](https://claude.com/claude-code) against a live test repo —
+the verification record (real runs, forced failures, suspend/resume, webhook replays, merge
+conflicts and recovery) is in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) §11.
