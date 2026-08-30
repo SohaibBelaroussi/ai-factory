@@ -144,6 +144,8 @@ Ports: web **:8080** · API **:3000** · Inngest dashboard **:8288**.
 
 ---
 
+Released under the [MIT License](LICENSE).
+
 Built end-to-end by [Claude Code](https://claude.com/claude-code) against a live test repo —
 the verification record (real runs, forced failures, suspend/resume, webhook replays, merge
 conflicts and recovery) is in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) §11.
